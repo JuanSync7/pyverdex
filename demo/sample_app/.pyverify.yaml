@@ -1,0 +1,10 @@
+# Explicit pyverify config for the demo app (auto-detected if this file is absent).
+paths:
+  source_root: src
+  test_root: tests
+thresholds:
+  line_standard: 80.0
+loop:
+  max_cycles: 2
+generate:
+  apply: false        # flip to true (with a provider) to write tests + mutation-gate

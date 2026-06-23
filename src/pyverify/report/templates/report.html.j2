@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>pyverify coverage report</title>
+<style>
+  :root { --pass:#1a7f37; --fail:#cf222e; --warn:#9a6700; --na:#6e7781; }
+  body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; color:#1f2328; }
+  h1 { margin-bottom:.2rem; } .meta { color:#6e7781; margin-bottom:1.5rem; }
+  .verdict { display:inline-block; padding:.3rem .8rem; border-radius:6px; color:#fff; font-weight:600; }
+  .pass{background:var(--pass)} .fail{background:var(--fail)} .warn{background:var(--warn)}
+  .not_run,.unknown{background:var(--na)}
+  .dims { display:flex; flex-wrap:wrap; gap:.75rem; margin:1.2rem 0; }
+  .dim { border:1px solid #d0d7de; border-radius:8px; padding:.6rem .9rem; min-width:200px; }
+  .dim .name { font-weight:600; text-transform:capitalize; }
+  .dim .badge { font-size:11px; padding:.1rem .45rem; border-radius:4px; color:#fff; }
+  table { border-collapse:collapse; width:100%; margin-top:1rem; }
+  th,td { border:1px solid #d0d7de; padding:.35rem .5rem; text-align:left; font-size:13px; }
+  th { background:#f6f8fa; } td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.crit td:first-child::before { content:"\25CF "; color:var(--fail); }
+  .low { color:var(--fail); font-weight:600; } .ok { color:var(--pass); }
+  details { margin-top:1.5rem; } summary { cursor:pointer; font-weight:600; }
+</style>
+</head>
+<body>
+  <h1>pyverify — multi-dimensional coverage</h1>
+  <div class="meta">
+    {{ r.source_root }} &middot; generated {{ r.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+    &middot; <span class="verdict {{ r.overall_status.value }}">{{ r.overall_status.value | upper }}</span>
+  </div>
+
+  <div class="dims">
+    {% for d in r.dimensions %}
+    <div class="dim">
+      <div class="name">{{ d.name }} <span class="badge {{ d.status.value }}">{{ d.status.value }}</span></div>
+      <div>{{ d.headline }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p>
+    <b>{{ r.total_functions }}</b> functions &middot;
+    <b>{{ r.functions_with_line_gaps }}</b> with line gaps
+    (<b>{{ r.boundary_gaps }}</b> boundary) &middot;
+    avg line {{ r.overall_line_coverage_pct if r.overall_line_coverage_pct is not none else 'n/a' }}% &middot;
+    <b>{{ r.cross_package_edges }}</b> call-graph edges &middot;
+    mutation {{ (r.mutation_kill_rate*100)|round(0) if r.mutation_kill_rate is not none else 'n/a' }}% &middot;
+    <b>{{ r.weak_tests }}</b> weak tests
+  </p>
+
+  <h2>Functions</h2>
+  <table>
+    <tr><th>Module</th><th>Function</th><th>Tier</th><th>Line %</th><th>Missing</th><th>Branches</th><th>Mutation</th></tr>
+    {% for f in r.functions %}
+    <tr class="{{ 'crit' if f.is_boundary else '' }}">
+      <td>{{ f.module }}</td>
+      <td>{{ f.function_name }}</td>
+      <td>{{ f.tier }}</td>
+      <td class="num {{ 'low' if f.line_status.value == 'fail' else 'ok' }}">
+        {{ f.line_coverage_pct if f.line_coverage_pct is not none else '—' }}</td>
+      <td class="num">{{ f.missing_lines|length }}</td>
+      <td class="num">{{ f.branch_count if f.branch_count is not none else '—' }}</td>
+      <td class="num">{{ (f.mutation_kill_rate*100)|round(0) if f.mutation_kill_rate is not none else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <details>
+    <summary>Cross-package edges ({{ r.edges|length }})</summary>
+    <table>
+      <tr><th>Caller</th><th>Callee</th><th>Line</th></tr>
+      {% for e in r.edges %}
+      <tr><td>{{ e.caller_module }}</td><td>{{ e.callee_module }}</td>
+          <td class="num">{{ e.call_site_line if e.call_site_line is not none else '—' }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+
+  {% if r.test_quality %}
+  <details>
+    <summary>Test assertion quality ({{ r.test_quality|length }})</summary>
+    <table>
+      <tr><th>Test</th><th>Score</th><th>Assertions</th><th>Issues</th></tr>
+      {% for t in r.test_quality %}
+      <tr><td>{{ t.test_id }}</td>
+          <td class="num {{ 'low' if t.score < 0.5 else 'ok' }}">{{ t.score }}</td>
+          <td class="num">{{ t.assertion_count }}</td>
+          <td>{{ t.issues|join(', ') }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</body>
+</html>

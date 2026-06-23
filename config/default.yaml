@@ -1,0 +1,62 @@
+# pyverify engine configuration.
+# All values shown are the built-in defaults; override only what you need.
+# Env overrides: PYVERIFY_PROJECT_ROOT, PYVERIFY_MODEL__MODEL, etc.
+
+project_root: "."
+
+paths:
+  source_root: "src"          # code under test (relative to project_root)
+  test_root: "tests"          # test suite
+  state_dir: "project/coverage/state"
+  report_dir: "project/coverage/report"
+  checkpoint_db: "project/coverage/state/checkpoints.sqlite"
+
+# Multi-dimensional gate thresholds (mirror the original test-audit tiers).
+thresholds:
+  line_critical: 95.0         # boundary / critical functions
+  line_standard: 85.0
+  line_cold: 70.0
+  mutation_kill_rate: 1.0     # generate gate: mutants must be 100% killed
+  assertion_score: 0.5        # assertion_quality minimum
+  assertion_min: 2            # min assertions per generated test
+  flakiness_max_fail_rate: 0.02
+  flakiness_min_runs: 10
+  edge_coverage_min: 0.0      # advisory (function-to-function coverage)
+
+# LLM used by the judgment nodes (fix / generate / evaluate / integrate).
+# provider: "anthropic"   -> Anthropic API (needs ANTHROPIC_API_KEY)
+#           "claude-code" -> local `claude` CLI headless, with session memory
+#                            carried across calls (no API key needed)
+#           "fake"        -> tests only
+# Without an available backend those nodes log "skipped" and the deterministic
+# measurement + report still run.
+model:
+  provider: "anthropic"
+  model: "claude-sonnet-4-6"        # Anthropic API model id
+  claude_code_model: null            # claude CLI alias (e.g. "sonnet"); null => CLI default
+  temperature: 0.0
+  max_tokens: 8000
+
+# audit -> generate -> audit loop bound.
+loop:
+  max_cycles: 3
+  max_gaps_per_cycle: 10
+
+# generate apply-mode: write approved tests + gate each gap on mutation_runner.
+generate:
+  apply: false                       # true => write tests to disk and re-audit (closes the loop)
+  restrengthen_attempts: 1           # re-author cycles when mutants survive
+  mutation_max_lines: 20
+  mutation_timeout: 30.0
+  generated_subdir: "pyverify_generated"
+
+# Per-stage enable + gate mode. gate: "gated" => human approval (interrupt);
+# "auto" => proceed unattended. This is the "per-stage config toggle".
+stages:
+  lint:      { enabled: true,  gate: auto }
+  fix:       { enabled: true,  gate: gated }
+  audit:     { enabled: true,  gate: auto }
+  generate:  { enabled: true,  gate: gated }
+  evaluate:  { enabled: true,  gate: auto }
+  integrate: { enabled: true,  gate: gated }
+  report:    { enabled: true,  gate: auto }

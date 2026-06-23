@@ -1,0 +1,54 @@
+[project]
+name = "pyverify"
+version = "0.1.0"
+description = "Multi-dimensional test-coverage verification engine (LangGraph). Line + branch + call-graph edges + mutation + assertion-quality, with config-driven gates and an audit-generate loop."
+readme = "README.md"
+authors = [
+    { email = "kokshewjuan7@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.111.0",
+    "bandit>=1.9.4",
+    "coverage>=7.14.2",
+    "detect-secrets>=1.5.0",
+    "fastapi>=0.138.0",
+    "freezegun>=1.5.5",
+    "hypothesis>=6.155.7",
+    "jinja2>=3.1.6",
+    "langchain-anthropic>=1.4.6",
+    "langchain-core>=1.4.8",
+    "langgraph>=1.2.6",
+    "langgraph-checkpoint-sqlite>=3.1.0",
+    "mutmut>=3.6.0",
+    "mypy>=2.1.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "ruff>=0.15.18",
+    "typer>=0.12",
+    "uvicorn[standard]>=0.49.0",
+    "vulture>=2.16",
+]
+
+[project.scripts]
+pyverify = "pyverify.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["src/pyverify/tools/vendored", "examples"]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"

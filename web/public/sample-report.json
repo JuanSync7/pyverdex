@@ -1,0 +1,166 @@
+{
+  "project_root": "/vols/sondrel_rnd/user_areas/Juan.Kok/python-verification/demo/sample_app",
+  "source_root": "/vols/sondrel_rnd/user_areas/Juan.Kok/python-verification/demo/sample_app/src",
+  "test_root": "/vols/sondrel_rnd/user_areas/Juan.Kok/python-verification/demo/sample_app/tests",
+  "generated_at": "2026-06-23T16:26:12.861598Z",
+  "functions": [
+    {
+      "module": "shop.api",
+      "function_name": "handle_checkout",
+      "line_start": 10,
+      "line_end": 20,
+      "tier": "critical",
+      "is_boundary": true,
+      "line_coverage_pct": 50.0,
+      "missing_lines": [
+        10,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "branch_count": 3,
+      "mutation_kill_rate": null,
+      "mutation_survivors": null,
+      "line_target": 95.0,
+      "line_status": "fail"
+    },
+    {
+      "module": "shop.inventory",
+      "function_name": "reserve",
+      "line_start": 11,
+      "line_end": 18,
+      "tier": "standard",
+      "is_boundary": false,
+      "line_coverage_pct": 77.78,
+      "missing_lines": [
+        14,
+        17
+      ],
+      "branch_count": 2,
+      "mutation_kill_rate": null,
+      "mutation_survivors": null,
+      "line_target": 80.0,
+      "line_status": "fail"
+    },
+    {
+      "module": "shop.pricing",
+      "function_name": "tier_discount",
+      "line_start": 4,
+      "line_end": 12,
+      "tier": "standard",
+      "is_boundary": false,
+      "line_coverage_pct": 80.0,
+      "missing_lines": [
+        7,
+        9
+      ],
+      "branch_count": 3,
+      "mutation_kill_rate": null,
+      "mutation_survivors": null,
+      "line_target": 80.0,
+      "line_status": "warn"
+    },
+    {
+      "module": "shop.pricing",
+      "function_name": "final_price",
+      "line_start": 15,
+      "line_end": 20,
+      "tier": "standard",
+      "is_boundary": false,
+      "line_coverage_pct": 83.33,
+      "missing_lines": [
+        19
+      ],
+      "branch_count": 1,
+      "mutation_kill_rate": null,
+      "mutation_survivors": null,
+      "line_target": 80.0,
+      "line_status": "warn"
+    }
+  ],
+  "edges": [
+    {
+      "caller_module": "shop.api",
+      "callee_module": "json",
+      "call_site_line": 12
+    }
+  ],
+  "test_quality": [
+    {
+      "test_id": "test_inventory.py::test_reserve_ok",
+      "score": 1.0,
+      "assertion_count": 1,
+      "issues": []
+    },
+    {
+      "test_id": "test_pricing.py::test_tier_low",
+      "score": 1.0,
+      "assertion_count": 2,
+      "issues": []
+    },
+    {
+      "test_id": "test_pricing.py::test_final_price_no_vip",
+      "score": 1.0,
+      "assertion_count": 1,
+      "issues": []
+    }
+  ],
+  "dimensions": [
+    {
+      "name": "line",
+      "status": "fail",
+      "headline": "72.78% avg over gap functions; 2 below tier target",
+      "detail": {
+        "functions_with_gaps": 4,
+        "boundary_gaps": 1
+      }
+    },
+    {
+      "name": "edge (function-to-function)",
+      "status": "pass",
+      "headline": "1 cross-package call edges mapped",
+      "detail": {
+        "edges": 1,
+        "new_edges": 0
+      }
+    },
+    {
+      "name": "branch",
+      "status": "pass",
+      "headline": "4 functions branch-mapped",
+      "detail": {}
+    },
+    {
+      "name": "mutation",
+      "status": "not_run",
+      "headline": "not run (generate stage produces this)",
+      "detail": {}
+    },
+    {
+      "name": "assertion-quality",
+      "status": "pass",
+      "headline": "0/3 tests below 0.5",
+      "detail": {}
+    },
+    {
+      "name": "lint/static",
+      "status": "pass",
+      "headline": "1 issues, 0 errors",
+      "detail": {}
+    }
+  ],
+  "total_functions": 4,
+  "functions_with_line_gaps": 4,
+  "boundary_gaps": 1,
+  "overall_line_coverage_pct": 72.78,
+  "cross_package_edges": 1,
+  "mutation_kill_rate": null,
+  "weak_tests": 0,
+  "overall_status": "fail"
+}
