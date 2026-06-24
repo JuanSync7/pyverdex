@@ -14,7 +14,7 @@ function at(path: string) {
 describe("AppRouter", () => {
   it("renders the overview hook at /", () => {
     at("/");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/lying|lie/i);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/proof/i);
   });
 
   it("routes to the tools page", () => {

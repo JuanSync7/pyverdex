@@ -10,7 +10,7 @@ export function HomePage() {
     <article className="page">
       <div className="hero">
         <div className="hero-eyebrow">Python · test verification</div>
-        <h1>Green tests can still be lying to you.</h1>
+        <h1>Coverage counts lines, pyverdex counts proof.</h1>
         <p className="sub">
           A passing suite at 100% line coverage can verify almost nothing. <strong>pyverdex</strong>{" "}
           measures whether your tests <em>actually</em> check your code — across seven dimensions —

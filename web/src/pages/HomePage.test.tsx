@@ -12,9 +12,9 @@ function renderHome() {
 }
 
 describe("HomePage (the hook)", () => {
-  it("leads with the thesis that green tests can lie", () => {
+  it("leads with the coverage-vs-proof thesis", () => {
     renderHome();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/lying|lie/i);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/proof/i);
     expect(screen.getByText(/false signal/i)).toBeInTheDocument();
   });
 
