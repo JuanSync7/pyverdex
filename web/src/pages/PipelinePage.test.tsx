@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { PipelinePage } from "./PipelinePage";
 
@@ -12,9 +12,18 @@ function renderPage() {
 }
 
 describe("PipelinePage", () => {
-  it("shows the pipeline diagram", () => {
+  it("shows the pipeline as a mermaid diagram", () => {
     renderPage();
-    expect(screen.getAllByText(/START →/).length).toBeGreaterThan(0);
+    const src = within(screen.getByTestId("pipeline-diagram")).getByRole("img");
+    expect(src.textContent).toMatch(/flowchart/);
+    expect(src.textContent).toMatch(/generate/);
+  });
+
+  it("shows the after_audit decision as a diagram", () => {
+    renderPage();
+    const src = within(screen.getByTestId("audit-generate-diagram")).getByRole("img");
+    expect(src.textContent).toMatch(/flowchart/);
+    expect(src.textContent).toMatch(/coverage met/i);
   });
 
   it("explains the bounded audit-generate loop", () => {

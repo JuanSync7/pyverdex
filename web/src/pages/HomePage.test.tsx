@@ -43,8 +43,14 @@ describe("HomePage (the hook)", () => {
     }
   });
 
-  it("renders the pipeline at a glance", () => {
+  it("renders the pipeline as a diagram", () => {
     renderHome();
-    expect(screen.getByText(/START →/)).toBeInTheDocument();
+    const diagram = screen.getByTestId("pipeline-diagram");
+    // Scope to the diagram SOURCE (the role=img element), not the whole figure:
+    // the caption also contains "audit"/"generate", so asserting on the figure
+    // would pass even if the diagram failed to mount. "flowchart" is source-only.
+    const src = within(diagram).getByRole("img");
+    expect(src.textContent).toMatch(/flowchart/);
+    expect(src.textContent).toMatch(/generate/);
   });
 });

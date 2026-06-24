@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { BACKENDS, STEPS } from "../wiki/content";
+import { APPLY_MODE_LOOP, BACKENDS, STEPS } from "../wiki/content";
+import { Mermaid } from "../wiki/Mermaid";
 
 const JUDGMENT_STEPS = STEPS.filter((s) => s.kind === "judgment" || s.kind === "mixed");
 
@@ -91,6 +92,11 @@ export function AgentsPage() {
           reason.
         </li>
       </ol>
+      <Mermaid
+        chart={APPLY_MODE_LOOP.mermaid}
+        caption={APPLY_MODE_LOOP.caption}
+        testId="apply-mode-diagram"
+      />
       <div className="callout">
         <span className="callout-label">why</span>
         <div>

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { DIMENSIONS, PIPELINE_DIAGRAM } from "../wiki/content";
+import { DIMENSIONS, PIPELINE_COMPACT } from "../wiki/content";
 import { DimensionReadout, FALSE_SIGNAL_CHANNELS } from "../wiki/DimensionReadout";
+import { Mermaid } from "../wiki/Mermaid";
 
 // The hook. A newcomer should leave understanding the one idea that makes
 // pyverify worth using — green ≠ verified — and know exactly where to click.
@@ -72,9 +73,11 @@ export function HomePage() {
         measure-and-improve loop in the middle. Deterministic tools do the measuring; an LLM only
         does the judgment work — authoring tests — behind human gates you control.
       </p>
-      <pre>
-        <code>{PIPELINE_DIAGRAM}</code>
-      </pre>
+      <Mermaid
+        chart={PIPELINE_COMPACT.mermaid}
+        caption={PIPELINE_COMPACT.caption}
+        testId="pipeline-diagram"
+      />
       <p>
         <Link to="/pipeline">Walk through the pipeline →</Link>
       </p>

@@ -23,11 +23,14 @@ measures several orthogonal dimensions of test *effectiveness*:
 
 ## Architecture in one diagram
 
-```
-START → lint → fix → audit ─▶ generate ─┐   (loop until targets met / cap)
-                       ▲                 │
-                       └─────────────────┘
-                     audit → evaluate → integrate → report → END
+```mermaid
+flowchart LR
+  start([START]) --> lint --> fix --> audit
+  audit --> afteraudit{coverage met?}
+  afteraudit -->|"gap + budget"| generate
+  afteraudit -->|"coverage met"| evaluate
+  generate -->|"re-measure"| audit
+  evaluate --> integrate --> report --> done([END])
 ```
 
 - **Deterministic nodes** = the 10 vendored juansync tools (no LLM) behind

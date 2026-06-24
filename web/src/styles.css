@@ -6,6 +6,7 @@
 
 :root {
   /* ground + structure */
+  --ink-0: #0a0d12;
   --ink: #0d1014;
   --ink-2: #14181f;
   --ink-3: #1a1f28;
@@ -216,7 +217,7 @@ table.cov tr.boundary td:first-child::before { content: "● "; color: var(--fai
   color: var(--violet-2); font-size: 0.84em; border: 1px solid var(--line);
 }
 .page pre {
-  background: #0a0d12; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--ink-0); border: 1px solid var(--line); border-radius: 10px;
   padding: 1rem 1.15rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.6;
 }
 .page pre code { background: none; padding: 0; border: none; color: var(--fg); font-size: 1em; }
@@ -389,4 +390,26 @@ table.cov tr.boundary td:first-child::before { content: "● "; color: var(--fai
   .wiki-main { padding: 1.6rem 1.2rem 3.5rem; }
   .readout { grid-template-columns: repeat(4, 1fr); }
   .page-title { font-size: 1.8rem; }
+}
+
+/* ============================ Mermaid diagrams =========================== */
+.mermaid-figure { margin: 1.6rem 0; padding: 0; }
+.mermaid-svg {
+  display: flex; justify-content: center; overflow-x: auto;
+  padding: 1.3rem 1.1rem; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--ink-2);
+}
+.mermaid-svg svg { max-width: 100%; height: auto; }
+.mermaid-loading {
+  padding: 1.6rem; border: 1px dashed var(--line); border-radius: 12px;
+  color: var(--fg-2); font-family: var(--mono); font-size: 0.82rem; text-align: center;
+}
+.mermaid-fallback {
+  background: var(--ink-0); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1rem 1.15rem; overflow-x: auto; font-size: 0.8rem; line-height: 1.55;
+  color: var(--fg); font-family: var(--mono);
+}
+.mermaid-figure figcaption {
+  margin-top: 0.7rem; font-family: var(--mono); font-size: 0.74rem;
+  color: var(--fg-2); line-height: 1.5; max-width: 60ch;
 }

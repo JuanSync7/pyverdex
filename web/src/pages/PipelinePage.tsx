@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { PIPELINE_DIAGRAM, STEPS } from "../wiki/content";
+import { AUDIT_GENERATE_LOOP, PIPELINE, STEPS } from "../wiki/content";
 import { StepBadges } from "../wiki/StepBadges";
+import { Mermaid } from "../wiki/Mermaid";
 
 // How the stages fit together: the fixed order, the measure-and-improve loop,
 // and the human gates. Each step links to its own detail page.
@@ -14,17 +15,15 @@ export function PipelinePage() {
         compiles that into a deterministic graph with a real loop and real gates.
       </p>
 
-      <pre>
-        <code>{PIPELINE_DIAGRAM}</code>
-      </pre>
+      <Mermaid chart={PIPELINE.mermaid} caption={PIPELINE.caption} testId="pipeline-diagram" />
 
       <h2>Read it left to right</h2>
       <p>
-        Control flows <code>START → lint → fix → audit</code>, then into the{" "}
-        <strong>audit⇄generate loop</strong>, and finally out through{" "}
-        <code>evaluate → integrate → report → END</code>. Every stage is a compiled subgraph
-        (one per skill), and every stage reads and writes a shared typed state object that the
-        SQLite checkpointer persists.
+        Control flows from <code>lint</code> to <code>fix</code> to <code>audit</code>, then into
+        the <strong>audit⇄generate loop</strong>, and finally out through <code>evaluate</code>,{" "}
+        <code>integrate</code>, and <code>report</code>. Every stage is a compiled subgraph (one per
+        skill), and every stage reads and writes a shared typed state object that the SQLite
+        checkpointer persists.
       </p>
 
       <ol className="steplist">
@@ -43,6 +42,11 @@ export function PipelinePage() {
       <p>
         <code>audit</code> measures, then a conditional edge decides what happens next:
       </p>
+      <Mermaid
+        chart={AUDIT_GENERATE_LOOP.mermaid}
+        caption={AUDIT_GENERATE_LOOP.caption}
+        testId="audit-generate-diagram"
+      />
       <pre>
         <code>{`def after_audit(state):
     if generate_enabled and not state["coverage_met"] \\

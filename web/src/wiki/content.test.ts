@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  APPLY_MODE_LOOP,
+  AUDIT_GENERATE_LOOP,
   BACKENDS,
   DIMENSIONS,
   getStep,
+  PIPELINE,
   STEPS,
   THRESHOLDS,
   TOOLS,
@@ -66,5 +69,23 @@ describe("wiki content model", () => {
   it("pins the mutation kill-rate threshold at 1.0", () => {
     const kill = THRESHOLDS.find((t) => t.key === "mutation_kill_rate");
     expect(kill?.value).toBe("1.0");
+  });
+
+  it("keeps the pipeline diagram in sync with every engine stage", () => {
+    expect(PIPELINE.mermaid.startsWith("flowchart")).toBe(true);
+    for (const s of STEPS) {
+      expect(PIPELINE.mermaid).toContain(s.id);
+    }
+    // the audit⇄generate loop-back edge must exist (generate returns to audit)
+    expect(PIPELINE.mermaid).toMatch(/generate[^\n]*audit/);
+  });
+
+  it("models the apply-mode and after_audit loops as mermaid flowcharts", () => {
+    for (const d of [APPLY_MODE_LOOP, AUDIT_GENERATE_LOOP]) {
+      expect(d.mermaid.startsWith("flowchart")).toBe(true);
+      expect(d.caption.length).toBeGreaterThan(0);
+    }
+    expect(APPLY_MODE_LOOP.mermaid).toMatch(/mutation/i);
+    expect(AUDIT_GENERATE_LOOP.mermaid).toMatch(/coverage met/i);
   });
 });

@@ -36,4 +36,11 @@ describe("AgentsPage", () => {
     renderPage();
     expect(screen.getAllByText(/no backend|without a backend|skipped/i).length).toBeGreaterThan(0);
   });
+
+  it("visualizes the apply-mode mutation-gate loop as a diagram", () => {
+    renderPage();
+    const src = within(screen.getByTestId("apply-mode-diagram")).getByRole("img");
+    expect(src.textContent).toMatch(/flowchart/);
+    expect(src.textContent).toMatch(/mutation gate/i);
+  });
 });

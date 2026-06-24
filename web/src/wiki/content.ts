@@ -361,10 +361,78 @@ export const GENERATE_CFG: ConfigItem[] = [
 ];
 
 // --------------------------------------------------------------------------
-// The pipeline diagram, as text (rendered in <pre> on the Pipeline page).
+// Flow diagrams, as Mermaid sources (rendered by <Mermaid>). All graphs in the
+// wiki are Mermaid-driven — no hand-drawn ASCII. The `class … det|judge|
+// terminal|decision` assignments reference the shared classes the <Mermaid>
+// component injects; keep node ids in sync with STEPS so they can't drift.
 // --------------------------------------------------------------------------
 
-export const PIPELINE_DIAGRAM = `START → lint → fix → audit ─▶ generate ─┐   (loop until targets met / cap)
-                       ▲                 │
-                       └─────────────────┘
-                     audit → evaluate → integrate → report → END`;
+export interface Diagram {
+  /** Mermaid flowchart source (without the shared classDefs). */
+  mermaid: string;
+  /** Doubles as the figure caption and the accessible label. */
+  caption: string;
+}
+
+export const PIPELINE: Diagram = {
+  mermaid: `flowchart LR
+  start([start]) --> lint --> fix --> audit
+  audit --> afteraudit{coverage met?}
+  afteraudit -->|"gap + budget"| generate
+  afteraudit -->|"coverage met"| evaluate
+  generate -->|"re-measure"| audit
+  evaluate --> integrate --> report --> done([end])
+  class start,done terminal
+  class lint,audit,report det
+  class fix,generate,integrate,evaluate judge
+  class afteraudit decision`,
+  caption:
+    "The pyverify pipeline: lint, fix, audit, then the audit⇄generate loop, and out through evaluate, integrate, report.",
+};
+
+export const PIPELINE_COMPACT: Diagram = {
+  mermaid: `flowchart LR
+  start([start]) --> lint --> fix --> audit
+  audit --> gap{gap?}
+  gap -->|yes| generate --> audit
+  gap -->|no| evaluate --> integrate --> report --> done([end])
+  class start,done terminal
+  class lint,audit,report det
+  class fix,generate,integrate,evaluate judge
+  class gap decision`,
+  caption: "The pyverify pipeline at a glance, with the audit⇄generate loop.",
+};
+
+export const APPLY_MODE_LOOP: Diagram = {
+  mermaid: `flowchart TD
+  start([gap selected]) --> author[author test]
+  author --> green{green run?}
+  green -->|no| restrengthen[re-strengthen]
+  green -->|yes| mutate{mutation gate<br/>kill 100%?}
+  mutate -->|survivors| restrengthen
+  mutate -->|all killed| keep[keep test]
+  restrengthen --> budget{attempts left?<br/>restrengthen_attempts}
+  budget -->|yes| author
+  budget -->|no| keep
+  keep --> reaudit([audit re-measures])
+  class start,reaudit terminal
+  class author,keep,restrengthen judge
+  class green,mutate,budget decision`,
+  caption:
+    "Apply-mode: author a test, require a green run, then gate on the mutation runner. Surviving mutants re-strengthen the test — bounded by restrengthen_attempts — and the final candidate is kept (recorded with its gate status) before audit re-measures.",
+};
+
+export const AUDIT_GENERATE_LOOP: Diagram = {
+  mermaid: `flowchart TD
+  audit[audit] --> met{coverage met?}
+  met -->|yes| evaluate[evaluate]
+  met -->|no| budget{cycle < max<br/>and not exhausted?}
+  budget -->|no| evaluate
+  budget -->|yes| generate[generate]
+  generate -->|"re-measure"| audit
+  class audit det
+  class generate,evaluate judge
+  class met,budget decision`,
+  caption:
+    "The after_audit decision: generate runs only while a gap remains and the cycle budget is not spent, then control returns to audit to re-measure.",
+};
