@@ -1,65 +1,102 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useTheme, type ThemeName } from "./theme";
 
 // Mermaid is large (d3 + dagre + dompurify, ~500kB+). It is NEVER imported at
 // module top level — only dynamically inside the render effect — so Rollup
 // emits it as its own on-demand chunk, kept out of the initial wiki bundle.
 
-const MONO = '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace';
+const MONO = '"DM Mono", ui-monospace, "SF Mono", Menlo, monospace';
 
-// Shared role styling, injected into every chart so the diagrams are themed
-// consistently (and the chart constants stay DRY — they only assign classes).
-// Saturated colour here encodes a node's role, matching the page discipline.
-const CLASSDEFS = [
-  "classDef det fill:#1a1f28,stroke:#46c06a,stroke-width:1.5px,color:#e8eaed",
-  "classDef judge fill:#1a1f28,stroke:#9d8cff,stroke-width:1.5px,color:#e8eaed",
-  "classDef terminal fill:#14181f,stroke:#5b6470,stroke-width:1px,color:#aab2bd",
-  "classDef decision fill:#1a1f28,stroke:#e3a740,stroke-width:1.5px,color:#e8eaed",
-].join("\n");
+// Role styling, injected into every chart so a node's saturated stroke encodes
+// its role. Colours are baked into the SVG at render time and cannot ride CSS
+// variables, so each theme carries its own concrete palette.
+function classDefs(theme: ThemeName): string {
+  const c =
+    theme === "dark"
+      ? {
+          fill: "#141519", text: "#ededed",
+          det: "#2fd4bb", judge: "#bccba9", decision: "#e0b15a",
+          termFill: "#0e0f12", termStroke: "#31343c", termText: "#888d96",
+        }
+      : {
+          fill: "#e2ddd0", text: "#34302a",
+          det: "#0a7164", judge: "#5f6b54", decision: "#9a6a1f",
+          termFill: "#dcd8cc", termStroke: "#b6b1a1", termText: "#5a564d",
+        };
+  return [
+    `classDef det fill:${c.fill},stroke:${c.det},stroke-width:1.5px,color:${c.text}`,
+    `classDef judge fill:${c.fill},stroke:${c.judge},stroke-width:1.5px,color:${c.text}`,
+    `classDef terminal fill:${c.termFill},stroke:${c.termStroke},stroke-width:1px,color:${c.termText}`,
+    `classDef decision fill:${c.fill},stroke:${c.decision},stroke-width:1.5px,color:${c.text}`,
+  ].join("\n");
+}
 
-// "Test Bench" theme: chrome stays monochrome ink; only the role classDefs add
-// colour. Background transparent so diagrams sit on the page's grid surface.
-const THEME = {
-  startOnLoad: false,
-  theme: "base" as const,
-  securityLevel: "strict" as const,
-  fontFamily: MONO,
-  themeVariables: {
-    darkMode: true,
+// "Engine Room" theme: chrome is warm ink on paper (or pale ink on near-black);
+// only the role classDefs add colour. Background transparent so diagrams sit on
+// the page's panel surface.
+function themeConfig(theme: ThemeName) {
+  const v =
+    theme === "dark"
+      ? {
+          darkMode: true,
+          primary: "#141519", primaryBorder: "#23252b", primaryText: "#ededed",
+          secondary: "#0e0f12", secondaryBorder: "#23252b", secondaryText: "#c2c7d0",
+          line: "#565a62", title: "#ededed", text: "#c2c7d0",
+          labelBg: "#08090b", labelText: "#c2c7d0",
+          clusterBkg: "#0e0f12", clusterBorder: "#23252b", nodeBorder: "#23252b",
+          mainBkg: "#141519", nodeText: "#ededed",
+        }
+      : {
+          darkMode: false,
+          primary: "#e2ddd0", primaryBorder: "#c8c3b4", primaryText: "#34302a",
+          secondary: "#dcd8cc", secondaryBorder: "#c8c3b4", secondaryText: "#5a564d",
+          line: "#8a8578", title: "#34302a", text: "#5a564d",
+          labelBg: "#dcd8cc", labelText: "#5a564d",
+          clusterBkg: "#e6e2d6", clusterBorder: "#c8c3b4", nodeBorder: "#c8c3b4",
+          mainBkg: "#e2ddd0", nodeText: "#34302a",
+        };
+  return {
+    startOnLoad: false,
+    theme: "base" as const,
+    securityLevel: "strict" as const,
     fontFamily: MONO,
-    fontSize: "15px",
-    background: "transparent",
-    primaryColor: "#1a1f28",
-    primaryBorderColor: "#2f3744",
-    primaryTextColor: "#e8eaed",
-    secondaryColor: "#14181f",
-    secondaryBorderColor: "#242a34",
-    secondaryTextColor: "#aab2bd",
-    tertiaryColor: "#14181f",
-    tertiaryBorderColor: "#242a34",
-    tertiaryTextColor: "#aab2bd",
-    lineColor: "#5b6470",
-    defaultLinkColor: "#5b6470",
-    titleColor: "#e8eaed",
-    textColor: "#aab2bd",
-    edgeLabelBackground: "#0d1014",
-    labelBackground: "#0d1014",
-    labelTextColor: "#aab2bd",
-    clusterBkg: "#14181f",
-    clusterBorder: "#242a34",
-    nodeBorder: "#2f3744",
-    mainBkg: "#1a1f28",
-    nodeTextColor: "#e8eaed",
-  },
-};
+    themeVariables: {
+      darkMode: v.darkMode,
+      fontFamily: MONO,
+      fontSize: "15px",
+      background: "transparent",
+      primaryColor: v.primary,
+      primaryBorderColor: v.primaryBorder,
+      primaryTextColor: v.primaryText,
+      secondaryColor: v.secondary,
+      secondaryBorderColor: v.secondaryBorder,
+      secondaryTextColor: v.secondaryText,
+      tertiaryColor: v.secondary,
+      tertiaryBorderColor: v.secondaryBorder,
+      tertiaryTextColor: v.secondaryText,
+      lineColor: v.line,
+      defaultLinkColor: v.line,
+      titleColor: v.title,
+      textColor: v.text,
+      edgeLabelBackground: v.labelBg,
+      labelBackground: v.labelBg,
+      labelTextColor: v.labelText,
+      clusterBkg: v.clusterBkg,
+      clusterBorder: v.clusterBorder,
+      nodeBorder: v.nodeBorder,
+      mainBkg: v.mainBkg,
+      nodeTextColor: v.nodeText,
+    },
+  };
+}
 
-// Cache the imported + initialized module so repeated mounts share one fetch.
+// Cache only the imported module so repeated mounts share one fetch. The theme
+// is applied per-render (mermaid.initialize is idempotent and cheap), so a
+// palette toggle re-themes every diagram on the page.
 let mermaidPromise: Promise<typeof import("mermaid")["default"]> | null = null;
 function loadMermaid() {
   if (!mermaidPromise) {
-    mermaidPromise = import("mermaid").then(({ default: mermaid }) => {
-      mermaid.initialize(THEME);
-      return mermaid;
-    });
+    mermaidPromise = import("mermaid").then(({ default: mermaid }) => mermaid);
   }
   return mermaidPromise;
 }
@@ -89,11 +126,12 @@ export interface MermaidProps {
 export function Mermaid({ chart, caption, testId }: MermaidProps) {
   const reactId = useId().replace(/:/g, "");
   const attempt = useRef(0);
+  const theme = useTheme();
   const [state, setState] = useState<State>(() =>
     canRenderMermaid() ? { kind: "loading" } : { kind: "fallback" }
   );
 
-  const source = `${chart}\n${CLASSDEFS}`;
+  const source = `${chart}\n${classDefs(theme)}`;
 
   useEffect(() => {
     if (!canRenderMermaid()) {
@@ -106,6 +144,7 @@ export function Mermaid({ chart, caption, testId }: MermaidProps) {
     (async () => {
       try {
         const mermaid = await loadMermaid();
+        mermaid.initialize(themeConfig(theme));
         const { svg } = await mermaid.render(renderId, source);
         if (alive) setState({ kind: "ready", svg });
       } catch {
@@ -115,7 +154,7 @@ export function Mermaid({ chart, caption, testId }: MermaidProps) {
     return () => {
       alive = false;
     };
-  }, [source, reactId]);
+  }, [source, reactId, theme]);
 
   const label = caption ?? "Diagram";
 
