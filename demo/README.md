@@ -1,3 +1,16 @@
+---
+title: Demo
+kind: demo
+layer: n/a
+status: stable
+owner: Juan.Kok
+summary: Runnable demo of the pyverdex pipeline over a sample project.
+id: demo-readme
+created: 2026-06-26
+updated: 2026-06-26
+visibility: public
+canonical: true
+---
 # pyverdex demo
 
 A self-contained walkthrough: a small `shop` package wired into the pyverdex

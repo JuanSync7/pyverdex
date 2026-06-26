@@ -1,3 +1,7 @@
+# Secrets / local env (documented in .env.example)
+.env
+.env.local
+
 # Python-generated files
 __pycache__/
 *.py[oc]

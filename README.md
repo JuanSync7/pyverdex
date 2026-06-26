@@ -1,3 +1,16 @@
+---
+title: pyverdex
+kind: readme
+layer: n/a
+status: stable
+owner: Juan.Kok
+summary: Multi-dimensional test-verification engine for Python, built as a LangGraph pipeline.
+id: readme
+created: 2026-06-26
+updated: 2026-06-26
+visibility: public
+canonical: true
+---
 # pyverdex
 
 A **multi-dimensional test-verification engine** for Python, built as a
