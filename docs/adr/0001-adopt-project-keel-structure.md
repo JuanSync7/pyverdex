@@ -50,8 +50,8 @@ Two scoping decisions:
 ## Consequences
 
 - A structural gate (`make check`) now fails the build on convention drift; the
-  code-boundary checks (`check_C`/`check_D`) activate automatically once
-  `src/backend/` exists (phase 2).
+  code-boundary checks (`check_C`/`check_D`, plus the `check_E` docstring warning)
+  activate automatically once `src/backend/` exists (phase 2).
 - `config/project.json` is updated at each phase so it never drifts from the
   tree.
 - The big, import-breaking moves are isolated to phases 2–4, each verifiable on

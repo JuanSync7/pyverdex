@@ -98,7 +98,8 @@ A package's `__init__.py` **is its public API**. Callers import from the
 package, never from a submodule. `__init__.py` lists `__all__` and re-exports
 only public symbols; implementation modules are `_`-prefixed; cross-package
 contracts are ABCs/`Protocol`s in `contracts.py`. *(Enforced by `check_C`/`check_D`,
-which activate once the backend lands in `src/backend/`.)*
+plus `check_E` which warns on an `__all__`-exported symbol with no docstring — all
+three activate once the backend lands in `src/backend/`.)*
 
 ## 4. Migration status (phased)
 

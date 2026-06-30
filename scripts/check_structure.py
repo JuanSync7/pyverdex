@@ -361,6 +361,10 @@ def check_H():
             if isinstance(a, str) and not os.path.isdir(os.path.join(ROOT, froot, a)):
                 warn("config/project.json: declared frontend stack '%s' is "
                      "missing (%s/%s)" % (a, froot, a))
+        for d in _subdirs(froot):
+            if d not in available:
+                warn("%s/%s: present but not in config/project.json "
+                     "layers.frontend.available (undeclared stack)" % (froot, d))
 
     transports = _expect(manifest.get("transports"), dict, "transports", {})
     enabled = _expect(transports.get("enabled"), list, "transports.enabled", [])
@@ -403,7 +407,8 @@ def check_I():
                 err("%s: must be a symlink to the sibling AGENT.md, not a "
                     "regular file (CONVENTIONS section 5)" % rel(claude))
             elif os.readlink(claude) != "AGENT.md":
-                err("%s: symlink target '%s' must be exactly 'AGENT.md'"
+                err("%s: symlink target '%s' must be exactly 'AGENT.md' "
+                    "(a relative sibling link)"
                     % (rel(claude), os.readlink(claude)))
             elif not os.path.isfile(os.path.join(dirpath, "AGENT.md")):
                 err("%s: symlink target AGENT.md does not exist" % rel(claude))
