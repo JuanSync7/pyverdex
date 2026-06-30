@@ -47,7 +47,7 @@ ${step.why}
 
 ### How it operates
 
-Internally, \`${step.name}\` is its own compiled subgraph. Its nodes, in order:
+Internally, \`${step.name}\` runs as its own compiled subgraph. Its phases, in order:
 
 ${step.how.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 
@@ -101,7 +101,21 @@ export function renderStepsMarkdown(): string {
     ...DIMENSIONS.map((d) => `| **${d.name}** | ${d.question} | \`${d.tool}\` |`),
   ].join("\n");
 
-  return `# The seven steps
+  return `---
+title: The seven steps
+kind: doc
+layer: n/a
+status: stable
+owner: Juan.Kok
+summary: How each of the seven pipeline steps operates, why it exists, and how it determines coverage.
+id: seven-steps-doc
+created: 2026-06-26
+updated: 2026-06-30
+visibility: public
+canonical: true
+---
+
+# The seven steps
 
 > **Generated file — do not edit by hand.** This document is rendered from
 > \`web/src/wiki/content.ts\`, the single source of truth it shares with the

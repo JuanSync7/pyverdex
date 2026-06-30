@@ -1,3 +1,17 @@
+---
+title: The seven steps
+kind: doc
+layer: n/a
+status: stable
+owner: Juan.Kok
+summary: How each of the seven pipeline steps operates, why it exists, and how it determines coverage.
+id: seven-steps-doc
+created: 2026-06-26
+updated: 2026-06-30
+visibility: public
+canonical: true
+---
+
 # The seven steps
 
 > **Generated file — do not edit by hand.** This document is rendered from
@@ -60,7 +74,7 @@ Cheapest signal first. Static defects (style, type errors, security smells, dead
 
 ### How it operates
 
-Internally, `lint` is its own compiled subgraph. Its nodes, in order:
+Internally, `lint` runs as its own compiled subgraph. Its phases, in order:
 
 1. SCAN — walk the source root for Python modules.
 2. RUN-LINTERS — drive the vendored lint_reporter, which fans out to ruff (style + likely bugs), mypy (types), bandit (security/SAST) and vulture (dead code), plus the secret scanner.
@@ -107,7 +121,7 @@ Lint findings split in two: mechanical ones a tool rewrites safely, and judgemen
 
 ### How it operates
 
-Internally, `fix` is its own compiled subgraph. Its nodes, in order:
+Internally, `fix` runs as its own compiled subgraph. Its phases, in order:
 
 1. RUFF-FIX — run `ruff check --fix` over the source: only ruff's safe, mechanical autofixes, applied deterministically.
 2. RE-LINT — re-run the linter to confirm what remains and refresh lint_report, so the fix is verified rather than assumed.
@@ -154,10 +168,10 @@ This is the heart of pyverdex. Line coverage alone lies — it proves a line ran
 
 ### How it operates
 
-Internally, `audit` is its own compiled subgraph. Its nodes, in order:
+Internally, `audit` runs as its own compiled subgraph. Its phases, in order:
 
 1. COLLECT — run the target test suite under coverage.py (best-effort) to produce a .coverage data file.
-2. SNAPSHOT — derive per-function line gaps (coverage_analyzer), cross-package call edges (--edges), branch structure (branch_mapper), boundary/critical tiers (boundary_classifier) and assertion quality (assertion_quality), each from its own deterministic tool.
+2. SNAPSHOT — derive per-function line gaps (coverage_analyzer), cross-package call edges (--edges), branch structure (branch_mapper), boundary/critical tiers (boundary_classifier), assertion quality (assertion_quality) and log-path coverage (log_contract_validator), each from its own deterministic tool.
 3. SCORE — for every function compare its line % against its tier target (critical 95 / standard 85 / cold 70), mark anything below as a gap, rank modules worst-first and flag critical modules.
 4. EMIT — set coverage_met (true only when nothing is below its tier target) and write the gap report + coverage state.
 
@@ -181,7 +195,7 @@ audit_gap_report, coverage_state, and the coverage_met boolean. The after_audit 
 | Gate | auto — pure measurement, deterministic and read-only. There is nothing to approve, and identical inputs always yield identical numbers. |
 | Input | source + test suite |
 | Output | per-function multi-dimensional measurements + coverage_met |
-| Tools | `coverage.py`, `coverage_analyzer`, `branch_mapper`, `boundary_classifier`, `coverage_analyzer --edges`, `assertion_quality` |
+| Tools | `coverage.py`, `coverage_analyzer`, `branch_mapper`, `boundary_classifier`, `coverage_analyzer --edges`, `assertion_quality`, `log_contract_validator` |
 
 ---
 
@@ -201,7 +215,7 @@ Measuring a gap doesn't close it. `generate` is the step that actually moves cov
 
 ### How it operates
 
-Internally, `generate` is its own compiled subgraph. Its nodes, in order:
+Internally, `generate` runs as its own compiled subgraph. Its phases, in order:
 
 1. SELECT — pick the unhandled below-target gaps, up to loop.max_gaps_per_cycle (10).
 2. AUTHOR — the LLM writes one pytest module per gap (system prompt distilled from the assertion-policy + layer-unit knowledge), requiring ≥ assertion_min meaningful assertions.
@@ -249,7 +263,7 @@ A green suite can still be a lie if every external dependency is mocked — it o
 
 ### How it operates
 
-Internally, `evaluate` is its own compiled subgraph. Its nodes, in order:
+Internally, `evaluate` runs as its own compiled subgraph. Its phases, in order:
 
 1. CLASSIFY — take the boundary functions that still carry line gaps from the audit snapshot and categorise each as db / api / queue / file / cli.
 2. SCORE — rank each candidate by replacement value, score = tier_weight × risk_weight × coverage_gap, so the riskiest under-tested seams rise to the top.
@@ -296,7 +310,7 @@ Authors candidate integration tests for the unwired seams `evaluate` flagged. Pr
 
 ### How it operates
 
-Internally, `integrate` is its own compiled subgraph. Its nodes, in order:
+Internally, `integrate` runs as its own compiled subgraph. Its phases, in order:
 
 1. PLAN — queue the ranked strategies (ordered by replacement value), up to loop.max_gaps_per_cycle.
 2. CONVERT — for each, the LLM proposes a real-service integration test using the assigned pattern (testcontainers / vcrpy / tmp_path / …).
@@ -342,7 +356,7 @@ Seven dimensions across many functions are useless as scattered numbers. `report
 
 ### How it operates
 
-Internally, `report` is its own compiled subgraph. Its nodes, in order:
+Internally, `report` runs as its own compiled subgraph. Its phases, in order:
 
 1. ASSEMBLE — merge every dimension's per-function measurement into the UnifiedCoverageReport.
 2. ROLL-UP — reduce each dimension to a status (line fails if any function is below tier; mutation passes at ≥ kill-rate; assertion fails on weak tests; …) and compute the overall verdict: fail if any dimension failed, warn if any didn't run, else pass.

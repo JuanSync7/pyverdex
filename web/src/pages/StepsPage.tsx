@@ -105,8 +105,8 @@ function StepDetail({ id }: { id: string }) {
 
       <h2>How it operates</h2>
       <p className="meta" style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-        Internally, <code>{step.name}</code> is its own compiled subgraph; these are its
-        nodes, in order.
+        Internally, <code>{step.name}</code> runs as its own compiled subgraph; these are
+        its phases, in order.
       </p>
       <ol>
         {step.how.map((phase) => (

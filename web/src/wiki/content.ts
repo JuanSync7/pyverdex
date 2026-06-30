@@ -197,7 +197,7 @@ export const STEPS: Step[] = [
     why: "This is the heart of pyverdex. Line coverage alone lies — it proves a line ran, not that anything checked it. `audit` measures every dimension a single % hides, and it is the only step that decides whether the suite is actually good enough. That verdict — `coverage_met` — is the pivot the whole loop turns on.",
     how: [
       "COLLECT — run the target test suite under coverage.py (best-effort) to produce a .coverage data file.",
-      "SNAPSHOT — derive per-function line gaps (coverage_analyzer), cross-package call edges (--edges), branch structure (branch_mapper), boundary/critical tiers (boundary_classifier) and assertion quality (assertion_quality), each from its own deterministic tool.",
+      "SNAPSHOT — derive per-function line gaps (coverage_analyzer), cross-package call edges (--edges), branch structure (branch_mapper), boundary/critical tiers (boundary_classifier), assertion quality (assertion_quality) and log-path coverage (log_contract_validator), each from its own deterministic tool.",
       "SCORE — for every function compare its line % against its tier target (critical 95 / standard 85 / cold 70), mark anything below as a gap, rank modules worst-first and flag critical modules.",
       "EMIT — set coverage_met (true only when nothing is below its tier target) and write the gap report + coverage state.",
     ],
@@ -216,6 +216,7 @@ export const STEPS: Step[] = [
       "boundary_classifier",
       "coverage_analyzer --edges",
       "assertion_quality",
+      "log_contract_validator",
     ],
     inputs: "source + test suite",
     outputs: "per-function multi-dimensional measurements + coverage_met",
