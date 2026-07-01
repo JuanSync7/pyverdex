@@ -10,9 +10,11 @@ known framework.
 
 It resolves both a **category** (from the imported frameworks) and a **lifecycle
 pattern**: the category's default, refined per-framework where the source gives a
-stronger signal — a db module that issues DDL (``create_all`` / alembic) needs a
-fresh schema per test (``schema-per-test``) rather than a transaction rollback; a
-temporal module needs a ``workflow-environment``. ``file`` is not detected here
+stronger signal — a db module that executes DDL (``create_all``/``drop_all`` or an
+alembic import) needs a fresh schema per test (``schema-per-test``) rather than a
+transaction rollback; a temporal module needs a ``workflow-environment``. Pattern
+overrides are category-scoped, so the pattern never disagrees with the category.
+``file`` is not detected here
 (``open``/``pathlib`` are too ubiquitous to be a reliable import signal), so it
 stays with the filename fallback. See ADR 0003.
 """
@@ -45,18 +47,19 @@ CATEGORY_PATTERN: dict[str, str] = {
     "file": "tmp_path", "cli": "subprocess-capture",
 }
 
-# Import tells that pin a SPECIFIC lifecycle pattern, overriding the category
-# default (checked in order; first match wins). These are source-side signals:
-# what the boundary itself does, not how a test happens to be written.
-_PATTERN_OVERRIDES: list[tuple[tuple[str, ...], str]] = [
-    (("temporalio",), "workflow-environment"),
-]
+# Per-category pattern refinements, applied ONLY when that category won precedence
+# — so the pattern can never disagree with the category (a module importing both
+# sqlalchemy and temporalio is a db boundary, not a workflow). Each override is a
+# source-side signal: what the boundary itself does. category -> [(tells, pattern)].
+_PATTERN_OVERRIDES: dict[str, list[tuple[tuple[str, ...], str]]] = {
+    "queue": [(("temporalio",), "workflow-environment")],
+}
 
-# AST signals that a db module issues schema DDL and so needs a fresh schema per
-# test rather than a transaction rollback: a create_all/drop_all call, a bare
-# MetaData/Table construction, or an alembic (migrations) import.
+# AST signal that a db module *executes* schema DDL (and so needs a fresh schema
+# per test, not a transaction rollback): a create_all/drop_all call, or an alembic
+# (migrations) import. Bare MetaData/Table construction is schema *definition*,
+# not creation, and a bare name is too easily shadowed — so it does not count.
 _DDL_ATTRS = {"create_all", "drop_all"}
-_DDL_NAMES = {"MetaData", "Table"}
 
 
 def _module_file(source_root: Path, dotted: str) -> Optional[Path]:
@@ -92,21 +95,18 @@ def _matches(imported: set[str], tell: str) -> bool:
 
 
 def _uses_ddl(imported: set[str], tree: ast.AST) -> bool:
-    """True when the module issues schema DDL (alembic import, a create_all/
-    drop_all call, or a MetaData/Table construction)."""
+    """True when the module executes schema DDL: an alembic (migrations) import,
+    or a create_all/drop_all call."""
     if _matches(imported, "alembic"):
         return True
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr in _DDL_ATTRS:
-            return True
-        if isinstance(node, ast.Name) and node.id in _DDL_NAMES:
-            return True
-    return False
+    return any(isinstance(node, ast.Attribute) and node.attr in _DDL_ATTRS
+               for node in ast.walk(tree))
 
 
 def _pattern_for(category: str, imported: set[str], tree: ast.AST) -> str:
-    """The lifecycle pattern for a detected category, refined per-framework."""
-    for tells, pattern in _PATTERN_OVERRIDES:
+    """The lifecycle pattern for a detected category, refined per-framework. Only
+    the winning category's own overrides apply, so pattern and category agree."""
+    for tells, pattern in _PATTERN_OVERRIDES.get(category, []):
         if any(_matches(imported, t) for t in tells):
             return pattern
     if category == "db" and _uses_ddl(imported, tree):

@@ -85,18 +85,37 @@ def test_detect_boundary_default_pattern(tmp_path):
 
 
 @pytest.mark.parametrize("code", [
-    "from sqlalchemy import MetaData\nmd = MetaData()\n",   # bare MetaData construction
     "import sqlalchemy\nBase.metadata.create_all(engine)\n",  # create_all call
-    "import alembic\nimport sqlalchemy\n",                   # migrations import
+    "import sqlalchemy\ndef teardown(): meta.drop_all()\n",   # drop_all call
+    "import alembic\nimport sqlalchemy\n",                    # migrations import
 ])
 def test_detect_boundary_ddl_gets_schema_per_test(tmp_path, code):
     root = _src(tmp_path, {"schema": code})
     assert detect_boundary("schema", root) == ("db", "schema-per-test")
 
 
+@pytest.mark.parametrize("code", [
+    "from sqlalchemy import MetaData\nmd = MetaData()\n",  # definition, not execution
+    "import sqlalchemy\nTable = {}\ndef q(): return Table\n",  # shadowed name, no DDL
+])
+def test_detect_boundary_no_ddl_keeps_transaction_rollback(tmp_path, code):
+    """Bare MetaData/Table use (definition or a shadowed local) must NOT be read
+    as schema DDL — that would wrongly force schema-per-test."""
+    root = _src(tmp_path, {"repo": code})
+    assert detect_boundary("repo", root) == ("db", "transaction-rollback")
+
+
 def test_detect_boundary_temporal_gets_workflow_environment(tmp_path):
     root = _src(tmp_path, {"wf": "from temporalio import workflow\n"})
     assert detect_boundary("wf", root) == ("queue", "workflow-environment")
+
+
+def test_detect_boundary_override_is_category_scoped(tmp_path):
+    """A module importing both a db framework (higher precedence) and temporalio
+    is a db boundary: the temporal override must NOT leak a workflow pattern onto
+    the db category (no (db, workflow-environment) mismatch)."""
+    root = _src(tmp_path, {"mixed": "import sqlalchemy\nfrom temporalio import workflow\n"})
+    assert detect_boundary("mixed", root) == ("db", "transaction-rollback")
 
 
 def test_detect_boundary_none_without_framework(tmp_path):
@@ -137,7 +156,7 @@ def test_classify_falls_back_to_filename_when_unresolved(tmp_path):
 
 
 def test_classify_returns_category_and_pattern(tmp_path):
-    root = _src(tmp_path, {"svc": "import sqlalchemy\nMetaData()\n"})
+    root = _src(tmp_path, {"svc": "import sqlalchemy\ndb.metadata.create_all()\n"})
     assert _classify("svc", root) == ("db", "schema-per-test")
     # fallback: no source file -> filename category + its default pattern
     assert _classify("app.user_db_repo", tmp_path / "empty") == ("db", "transaction-rollback")

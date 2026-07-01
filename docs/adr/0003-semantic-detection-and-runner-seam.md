@@ -59,12 +59,16 @@ rather than faked:
 
 - **Per-framework pattern refinement.** The pattern is the category default,
   refined where the *source itself* gives a stronger signal
-  (`_PATTERN_OVERRIDES` / `_uses_ddl`): a `db` module that issues DDL — a
-  `create_all`/`drop_all` call, a `MetaData`/`Table` construction, or an
-  `alembic` import — maps to `schema-per-test` rather than `transaction-rollback`;
-  a `temporalio` module maps to `workflow-environment`. Further refinements
-  (testcontainers → `ephemeral-container`, Django-migrations DDL) remain future
-  work. The pattern is always a valid `LifecyclePattern` enum value.
+  (`_PATTERN_OVERRIDES` / `_uses_ddl`): a `db` module that *executes* schema DDL —
+  a `create_all`/`drop_all` call or an `alembic` import (bare `MetaData`/`Table`
+  construction is definition, not creation, so it does not count) — maps to
+  `schema-per-test` rather than `transaction-rollback`; a `temporalio` module maps
+  to `workflow-environment`. Overrides are **category-scoped**: only the winning
+  category's own refinements apply, so the pattern can never disagree with the
+  category (a module importing both `sqlalchemy` and `temporalio` is a `db`
+  boundary and stays `transaction-rollback`). Further refinements (testcontainers
+  → `ephemeral-container`, Django-migrations DDL) remain future work. The pattern
+  is always a valid `LifecyclePattern` enum value.
 - **No `file` detection.** `open`/`pathlib` are too ubiquitous to be a reliable
   import signal, so `file` stays with the filename fallback.
 - **Precedence** when a module imports several frameworks: `db > queue > cli >
