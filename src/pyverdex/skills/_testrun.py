@@ -9,12 +9,12 @@ deterministic "prove the written test actually works" layer that both the
 from __future__ import annotations
 
 import ast
-import subprocess
-import sys
 from pathlib import Path
+from typing import Optional
 
 from ..config import Thresholds
 from ..tools import adapters
+from ..tools.adapters import Runner
 
 
 def test_path(test_root: Path, subdir: str, module: str, fn: str) -> Path:
@@ -31,23 +31,15 @@ def valid_python(code: str) -> bool:
         return False
 
 
-def green_run(root: Path, test_path: Path, timeout: float = 120.0) -> tuple[bool, str]:
-    """Run pytest on one test file; return (passed, short_output). rc 0 == green.
+def green_run(root: Path, test_path: Path, timeout: float = 120.0,
+              runner: Optional[Runner] = None) -> tuple[bool, str]:
+    """Run one test file; return (passed, short_output). rc 0 == green.
 
     ``root`` (the target project root) is the cwd so the test resolves the
-    project's imports and conftest.
+    project's imports and conftest. Delegates to the selected :class:`Runner`
+    (pytest by default) — the seam for alternate runners.
     """
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pytest", str(test_path), "-q",
-             "-p", "no:cacheprovider"],
-            cwd=str(root), capture_output=True, text=True, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "green-run timed out"
-    except OSError as exc:  # e.g. cwd gone, interpreter/pytest missing
-        return False, f"green-run could not start: {exc}"
-    return proc.returncode == 0, (proc.stdout or proc.stderr)[-500:]
+    return (runner or adapters.get_runner()).green_run(root, test_path, timeout=timeout)
 
 
 def flakiness(root: Path, test_path: Path, thresholds: Thresholds) -> tuple[bool, float | None]:

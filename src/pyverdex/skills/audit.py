@@ -42,7 +42,8 @@ def build_audit_graph(config: Config):
         if not test.exists():
             return {"log": [f"audit/collect: no test root at {test}; "
                             "line coverage will be unavailable"]}
-        res = adapters.collect_coverage(root, source, test)
+        res = adapters.collect_coverage(
+            root, source, test, runner=adapters.get_runner(config.runner))
         msg = (f"audit/collect: coverage run rc={res.returncode}"
                + (" (timed out)" if res.timed_out else ""))
         return {"log": [msg]}

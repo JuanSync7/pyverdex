@@ -284,6 +284,17 @@ class Config(BaseSettings):
     integrate: IntegrateConfig = Field(default_factory=IntegrateConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
     stages: dict[StageName, StageConfig] = Field(default_factory=_default_stages)
+    # which test runner backs coverage/green-runs; "pytest" is the only one today
+    # (the seam for unittest/other runners — see ADR 0003). Kept in sync with
+    # adapters._RUNNERS; validated at load so a typo fails fast, not mid-run.
+    runner: str = "pytest"
+
+    @field_validator("runner")
+    @classmethod
+    def _known_runner(cls, v: str) -> str:
+        if v not in {"pytest"}:
+            raise ValueError("runner must be 'pytest' (the only runner today)")
+        return v
 
     # --- derived absolute paths -------------------------------------------
 
