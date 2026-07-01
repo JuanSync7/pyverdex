@@ -1,3 +1,16 @@
+---
+title: Architecture
+kind: doc
+layer: cross-cutting
+status: stable
+owner: Juan.Kok
+summary: How the pyverdex engine is structured — the LangGraph pipeline and its dimensions.
+id: arch
+created: 2026-06-26
+updated: 2026-06-26
+visibility: public
+canonical: true
+---
 # pyverdex architecture
 
 ## Goal

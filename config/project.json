@@ -1,0 +1,21 @@
+{
+  "_comment": "Authoritative project facts (CONVENTIONS section 15), enforced by scripts/check_structure.py (check_H). pyverdex is mid-migration to the Project Keel structure: the backend currently lives in src/pyverdex (moves to src/backend in phase 2); the frontend (web/ -> src/frontend) and the REST transport (src/pyverdex/server -> api/rest_fastapi) are declared here as each phase lands. Per the refactor decision, LangGraph stays a CORE engine (kept, not demoted to an optional runtime adapter).",
+  "name": "pyverdex",
+  "layers": {
+    "backend": {
+      "language": "python",
+      "python": ">=3.11",
+      "path": "src/pyverdex"
+    }
+  },
+  "transports": {
+    "enabled": [],
+    "available": {}
+  },
+  "runtimes": {
+    "default": "langgraph",
+    "available": {
+      "langgraph": "src/pyverdex"
+    }
+  }
+}

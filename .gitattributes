@@ -1,0 +1,11 @@
+# Normalize line endings.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.svg text
+*.ico binary
+
+# Keep generated lockfiles out of diffs/merges where it helps.
+uv.lock linguist-generated=true
+web/package-lock.json linguist-generated=true
