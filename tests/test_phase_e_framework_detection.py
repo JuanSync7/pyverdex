@@ -8,8 +8,14 @@ from pathlib import Path
 import pytest
 
 from pyverdex.config import Config, GateMode, StageConfig, StageName
-from pyverdex.skills._detect import detect_framework
-from pyverdex.skills.evaluate import _category, _classify_category, build_evaluate_graph
+from pyverdex.models import LifecyclePattern
+from pyverdex.skills._detect import detect_boundary, detect_framework
+from pyverdex.skills.evaluate import (
+    _category,
+    _classify,
+    _classify_category,
+    build_evaluate_graph,
+)
 from pyverdex.tools import adapters
 from pyverdex.tools.adapters import PytestRunner, ToolResult
 
@@ -71,6 +77,49 @@ def test_detect_framework_missing_or_broken_file(tmp_path):
     assert detect_framework("does_not_exist", root) is None
 
 
+# --- detect_boundary: category + per-framework lifecycle pattern -----------
+
+def test_detect_boundary_default_pattern(tmp_path):
+    root = _src(tmp_path, {"repo": "from sqlalchemy.orm import Session\n"})
+    assert detect_boundary("repo", root) == ("db", "transaction-rollback")
+
+
+@pytest.mark.parametrize("code", [
+    "from sqlalchemy import MetaData\nmd = MetaData()\n",   # bare MetaData construction
+    "import sqlalchemy\nBase.metadata.create_all(engine)\n",  # create_all call
+    "import alembic\nimport sqlalchemy\n",                   # migrations import
+])
+def test_detect_boundary_ddl_gets_schema_per_test(tmp_path, code):
+    root = _src(tmp_path, {"schema": code})
+    assert detect_boundary("schema", root) == ("db", "schema-per-test")
+
+
+def test_detect_boundary_temporal_gets_workflow_environment(tmp_path):
+    root = _src(tmp_path, {"wf": "from temporalio import workflow\n"})
+    assert detect_boundary("wf", root) == ("queue", "workflow-environment")
+
+
+def test_detect_boundary_none_without_framework(tmp_path):
+    root = _src(tmp_path, {"plain": "x = 1\n"})
+    assert detect_boundary("plain", root) is None
+
+
+def test_every_detected_pattern_is_a_valid_enum_value(tmp_path):
+    cases = {
+        "a": "from sqlalchemy.orm import Session\n",
+        "b": "from sqlalchemy import MetaData\nMetaData()\n",
+        "c": "from temporalio import workflow\n",
+        "d": "from celery import shared_task\n",
+        "e": "import typer\n",
+        "f": "import httpx\n",
+    }
+    root = _src(tmp_path, cases)
+    valid = {p.value for p in LifecyclePattern}
+    for mod in cases:
+        cat, pattern = detect_boundary(mod, root)  # type: ignore[misc]
+        assert pattern in valid, f"{mod} -> {pattern} not a LifecyclePattern"
+
+
 # --- _classify_category: semantic first, filename fallback -----------------
 
 def test_classify_semantic_overrides_filename(tmp_path):
@@ -85,6 +134,13 @@ def test_classify_falls_back_to_filename_when_unresolved(tmp_path):
     # no source to parse -> detect returns None -> filename heuristic wins
     assert _classify_category("app.user_db_repo", root) == "db"
     assert _classify_category("app.handlers", root) == "api"
+
+
+def test_classify_returns_category_and_pattern(tmp_path):
+    root = _src(tmp_path, {"svc": "import sqlalchemy\nMetaData()\n"})
+    assert _classify("svc", root) == ("db", "schema-per-test")
+    # fallback: no source file -> filename category + its default pattern
+    assert _classify("app.user_db_repo", tmp_path / "empty") == ("db", "transaction-rollback")
 
 
 def test_evaluate_classify_uses_semantic_category(tmp_path):
@@ -104,6 +160,25 @@ def test_evaluate_classify_uses_semantic_category(tmp_path):
     cand = out["integration_strategies"][0]["candidates"][0]
     assert cand["category"] == "queue"
     assert cand["pattern"] == "celery-test-harness"
+
+
+def test_evaluate_classify_refines_pattern_for_ddl(tmp_path):
+    """A db boundary that issues DDL gets schema-per-test end-to-end, not the
+    transaction-rollback default."""
+    root = _src(tmp_path, {"app.models": "import sqlalchemy\nBase.metadata.create_all()\n"})
+    cfg = Config()
+    cfg.stages = {n: StageConfig(enabled=True, gate=GateMode.auto) for n in StageName}
+    graph = build_evaluate_graph(cfg)
+    out = graph.invoke({
+        "source_root": str(root),
+        "audit_gap_report": {"gaps": [{
+            "module": "app.models", "function_name": "init_db",
+            "coverage_pct": 30.0, "is_boundary": True}]},
+        "integration_strategies": [], "approvals": {}, "log": [], "errors": [],
+    })
+    cand = out["integration_strategies"][0]["candidates"][0]
+    assert cand["category"] == "db"
+    assert cand["pattern"] == "schema-per-test"
 
 
 # --- Runner protocol seam ---------------------------------------------------

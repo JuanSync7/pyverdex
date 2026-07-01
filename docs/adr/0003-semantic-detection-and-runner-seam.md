@@ -35,30 +35,36 @@ the detection improvement; no second runner yet).
 
 ## Decision
 
-**Semantic, import-based detection (category-only).** A new pyverdex helper
-`skills/_detect.py:detect_framework(module, source_root)` resolves the dotted
+**Semantic, import-based detection.** A new pyverdex helper
+`skills/_detect.py:detect_boundary(module, source_root)` resolves the dotted
 module to its source file, parses the AST, and classifies by the frameworks it
-**imports**:
+**imports** — returning a category and a (refined) lifecycle pattern:
 
 | Imports (any of) | Category | Lifecycle pattern (via `_PATTERN`) |
 |---|---|---|
 | sqlalchemy, psycopg2, psycopg, pymongo, asyncpg, sqlite3, django.db, mysql, motor, aiomysql, aiosqlite, redis | `db` | transaction-rollback |
-| celery, kombu, pika, dramatiq, kafka, confluent_kafka, aiokafka | `queue` | celery-test-harness |
+| celery, kombu, pika, dramatiq, kafka, confluent_kafka, aiokafka, temporalio | `queue` | celery-test-harness (temporalio → workflow-environment) |
 | click, typer, argparse | `cli` | subprocess-capture |
 | fastapi, flask, starlette, requests, httpx, aiohttp, boto3, openai, urllib3, grpc | `api` | vcrpy |
 
 The canonical, authoritative list is `_FRAMEWORK_SIGNS` in
 `src/pyverdex/skills/_detect.py`; this table mirrors it.
 
-`evaluate` now calls `_classify_category = detect_framework(...) or _category(...)`
-— semantic first, the **filename heuristic as fallback** when the file can't be
-read or imports no known framework. The category→pattern/risk maps are unchanged,
-so detection only makes the *category* more accurate; the pattern still derives
-from it. Scope choices, documented rather than faked:
+`evaluate` calls `detect_boundary(...)` (semantic) first — which returns both a
+category **and** a lifecycle pattern — and falls back to
+`_category(...)` + the category default when the file can't be read or imports no
+known framework. `CATEGORY_PATTERN` in `_detect.py` is the single source of truth
+for the category→pattern defaults (evaluate imports it). Scope choices, documented
+rather than faked:
 
-- **Category-only.** Per-framework pattern refinement (e.g. SQLAlchemy-with-DDL →
-  `schema-per-test`) is future work; today every `db` boundary maps to
-  `transaction-rollback` as before.
+- **Per-framework pattern refinement.** The pattern is the category default,
+  refined where the *source itself* gives a stronger signal
+  (`_PATTERN_OVERRIDES` / `_uses_ddl`): a `db` module that issues DDL — a
+  `create_all`/`drop_all` call, a `MetaData`/`Table` construction, or an
+  `alembic` import — maps to `schema-per-test` rather than `transaction-rollback`;
+  a `temporalio` module maps to `workflow-environment`. Further refinements
+  (testcontainers → `ephemeral-container`, Django-migrations DDL) remain future
+  work. The pattern is always a valid `LifecyclePattern` enum value.
 - **No `file` detection.** `open`/`pathlib` are too ubiquitous to be a reliable
   import signal, so `file` stays with the filename fallback.
 - **Precedence** when a module imports several frameworks: `db > queue > cli >

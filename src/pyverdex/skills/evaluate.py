@@ -16,14 +16,11 @@ from langgraph.graph import END, START, StateGraph
 
 from ..config import Config, StageName
 from ..state import EngineState
-from ._detect import detect_framework
+from ._detect import CATEGORY_PATTERN as _PATTERN
+from ._detect import detect_boundary, detect_framework
 from ._gates import human_gate
 
 _RISK = {"db": 5, "api": 4, "queue": 3, "file": 2, "cli": 1}
-_PATTERN = {
-    "db": "transaction-rollback", "api": "vcrpy", "queue": "celery-test-harness",
-    "file": "tmp_path", "cli": "subprocess-capture",
-}
 
 
 def _category(module: str) -> str:
@@ -39,6 +36,16 @@ def _category(module: str) -> str:
     return "api"
 
 
+def _classify(module: str, source_root: Path) -> tuple[str, str]:
+    """(category, lifecycle_pattern): semantic detection first (with per-framework
+    pattern refinement), the filename heuristic + category-default as fallback."""
+    detected = detect_boundary(module, source_root)
+    if detected is not None:
+        return detected
+    cat = _category(module)
+    return cat, _PATTERN[cat]
+
+
 def _classify_category(module: str, source_root: Path) -> str:
     """Semantic (import-based) category first, filename heuristic as fallback."""
     return detect_framework(module, source_root) or _category(module)
@@ -52,7 +59,7 @@ def build_evaluate_graph(config: Config):
         for g in gap_report.get("gaps", []):
             if not g.get("is_boundary"):
                 continue
-            cat = _classify_category(g["module"], source_root)
+            cat, pattern = _classify(g["module"], source_root)
             risk = _RISK[cat]
             tier_weight = 3  # boundary fns are runtime-tier
             gap = max(0.0, (100.0 - float(g.get("coverage_pct", 100.0))) / 100.0)
@@ -65,7 +72,7 @@ def build_evaluate_graph(config: Config):
                 "tier_weight": tier_weight,
                 "gap": round(gap, 3),
                 "score": round(tier_weight * risk * gap, 3),
-                "pattern": _PATTERN[cat],
+                "pattern": pattern,
             })
         candidates.sort(key=lambda c: c["score"], reverse=True)
         strategies = [{"module": c["module"], "candidates": [c]} for c in candidates]
