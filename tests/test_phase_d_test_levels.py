@@ -131,6 +131,34 @@ def test_import_smoke_honours_excludes(tmp_path):
     assert res.data["total"] == 0 and res.data["failures"] == []
 
 
+def test_import_smoke_records_systemexit_at_import(tmp_path):
+    # a module that sys.exit()s at import must be recorded as a failure, NOT crash
+    # the whole sweep (SystemExit is a BaseException, not an Exception)
+    src = tmp_path / "src" / "pkg"
+    src.mkdir(parents=True)
+    (src / "__init__.py").write_text("")
+    (src / "good.py").write_text("OK = 1\n")
+    (src / "boom.py").write_text("import sys\nsys.exit(3)\n")
+    res = adapters.run_import_smoke(tmp_path / "src", tmp_path)
+    assert res.ok and res.data is not None  # sweep still produced a report
+    assert res.data["imported"] == 2  # pkg + pkg.good
+    assert {f["module"] for f in res.data["failures"]} == {"pkg.boom"}
+
+
+def test_import_smoke_covers_namespace_packages(tmp_path):
+    # PEP 420 namespace package (no __init__.py) must still be swept
+    src = tmp_path / "src" / "nspkg"
+    src.mkdir(parents=True)
+    (src / "mod.py").write_text("VALUE = 1\n")
+    res = adapters.run_import_smoke(tmp_path / "src", tmp_path)
+    assert res.data["total"] == 1 and res.data["imported"] == 1
+    # a non-identifier dir/file name is skipped (not a valid dotted module)
+    (tmp_path / "src" / "data-dir").mkdir()
+    (tmp_path / "src" / "data-dir" / "x.py").write_text("Y = 2\n")
+    res2 = adapters.run_import_smoke(tmp_path / "src", tmp_path)
+    assert res2.data["total"] == 1  # data-dir.* is not importable, so skipped
+
+
 # --- audit wires the smoke sweep into state --------------------------------
 
 def _audit_state(cfg: Config) -> dict:

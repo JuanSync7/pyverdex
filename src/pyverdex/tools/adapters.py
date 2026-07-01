@@ -254,9 +254,12 @@ def coverage_totals(project_root: Path, source_root: Path) -> ToolResult:
 
 
 # Subprocess body for the import smoke sweep: put ``source_root`` on sys.path,
-# then import every module that lives in a real package under it (all ancestor
-# dirs have ``__init__.py``), recording import-time failures. Runs isolated so a
-# target module's import side effects never touch the engine process.
+# then import every module whose path maps to a valid dotted name (which also
+# supports PEP 420 namespace packages — no ``__init__.py`` required — while
+# skipping dirs/files with non-identifier names), recording import-time
+# failures. ``SystemExit`` at import is caught as a failure (not a crash);
+# ``KeyboardInterrupt`` still aborts. Runs isolated so a target module's import
+# side effects never touch the engine process.
 _IMPORT_SMOKE_SRC = r"""
 import importlib, json, sys
 from pathlib import Path
@@ -271,18 +274,18 @@ for py in sorted(src.rglob("*.py")):
     parts = py.relative_to(src).parts
     if any(p in excludes for p in parts):
         continue
-    # every ancestor directory must be a package for a dotted import to resolve
-    if not all((src.joinpath(*parts[:i + 1]) / "__init__.py").exists()
-               for i in range(len(parts) - 1)):
-        continue
     mod_parts = parts[:-1] if py.name == "__init__.py" else (*parts[:-1], py.stem)
-    if not mod_parts:
+    # a dotted import only resolves when every component is a valid identifier;
+    # namespace packages (PEP 420) resolve without __init__.py since src is on path
+    if not mod_parts or not all(p.isidentifier() for p in mod_parts):
         continue
     dotted = ".".join(mod_parts)
     total += 1
     try:
         importlib.import_module(dotted)
-    except Exception as exc:  # noqa: BLE001 - any import-time error is the signal
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - import-time SystemExit etc. IS the signal
         failures.append({"module": dotted, "error": f"{type(exc).__name__}: {exc}"})
 print(json.dumps({"total": total, "imported": total - len(failures),
                   "failures": failures}))
