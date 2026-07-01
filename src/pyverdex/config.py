@@ -16,6 +16,8 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .models import TestLevel
+
 
 class GateMode(str, Enum):
     """Per-stage human-in-the-loop behaviour."""
@@ -173,6 +175,20 @@ class IntegrateConfig(BaseModel):
     generated_subdir: str = "pyverdex_integration"  # under test_root (kept separate)
 
 
+class AuditConfig(BaseModel):
+    """Toggles for the (deterministic) audit measurement stage."""
+
+    import_smoke: bool = True  # import every source module to catch import-time errors
+    import_smoke_timeout: float = 120.0  # seconds for the whole import sweep
+
+    @field_validator("import_smoke_timeout")
+    @classmethod
+    def _positive_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("import_smoke_timeout must be positive")
+        return v
+
+
 class LoopConfig(BaseModel):
     max_cycles: int = 3  # audit→generate→audit loop bound
     max_gaps_per_cycle: int = 10
@@ -205,6 +221,46 @@ def _default_stages() -> dict[StageName, StageConfig]:
     }
 
 
+# Which stages each TestLevel needs. ``audit`` (measurement) and ``report``
+# (output) are always on; each level adds the stage that *produces* its kind of
+# test. Levels are ORTHOGONAL to coverage tiers (Thresholds): a level selects
+# which stages run, a tier sets the bar a stage must clear. See ADR 0002.
+# ``lint``/``fix`` are pre-flight, not a test level, so a level filter drops them.
+LEVEL_STAGES: dict[TestLevel, set[StageName]] = {
+    TestLevel.smoke: {StageName.audit, StageName.report},
+    TestLevel.unit: {StageName.audit, StageName.generate, StageName.report},
+    TestLevel.integration: {
+        StageName.audit, StageName.evaluate, StageName.integrate, StageName.report},
+    # e2e is reserved: no dedicated harness yet, so it aliases the integration
+    # pipeline for now (documented in ADR 0002 rather than silently faked).
+    TestLevel.e2e: {
+        StageName.audit, StageName.evaluate, StageName.integrate, StageName.report},
+}
+
+
+def parse_levels(spec: str) -> list[TestLevel]:
+    """Parse a comma-separated ``--level`` spec into TestLevel members.
+
+    Raises ``ValueError`` naming the offending token (and the valid set) so the
+    CLI/server can surface a clean message instead of a stack trace.
+    """
+    out: list[TestLevel] = []
+    for raw in spec.split(","):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        try:
+            lvl = TestLevel(token)
+        except ValueError:
+            valid = ", ".join(t.value for t in TestLevel)
+            raise ValueError(f"unknown test level '{token}'; choose from: {valid}") from None
+        if lvl not in out:
+            out.append(lvl)
+    if not out:
+        raise ValueError("no test level given")
+    return out
+
+
 class Config(BaseSettings):
     """Top-level engine configuration.
 
@@ -226,6 +282,7 @@ class Config(BaseSettings):
     loop: LoopConfig = Field(default_factory=LoopConfig)
     generate: GenerateConfig = Field(default_factory=GenerateConfig)
     integrate: IntegrateConfig = Field(default_factory=IntegrateConfig)
+    audit: AuditConfig = Field(default_factory=AuditConfig)
     stages: dict[StageName, StageConfig] = Field(default_factory=_default_stages)
 
     # --- derived absolute paths -------------------------------------------
@@ -263,6 +320,19 @@ class Config(BaseSettings):
     def is_gated(self, name: StageName) -> bool:
         return self.stage(name).gate is GateMode.gated
 
+    def apply_levels(self, levels: list[TestLevel]) -> None:
+        """Restrict the run to the stages the given test levels need.
+
+        Enables exactly the union of ``LEVEL_STAGES`` for the selected levels
+        (disabling every other stage) while preserving each stage's gate mode.
+        Coverage thresholds are untouched — levels and tiers are orthogonal.
+        """
+        wanted: set[StageName] = set()
+        for lvl in levels:
+            wanted |= LEVEL_STAGES.get(lvl, set())
+        self.stages = {n: self.stage(n).model_copy(update={"enabled": n in wanted})
+                       for n in StageName}
+
     def ensure_dirs(self) -> None:
         self.abs_state_dir.mkdir(parents=True, exist_ok=True)
         self.abs_report_dir.mkdir(parents=True, exist_ok=True)
@@ -290,7 +360,10 @@ __all__ = [
     "ModelConfig",
     "GenerateConfig",
     "IntegrateConfig",
+    "AuditConfig",
     "LoopConfig",
     "PathsConfig",
     "Config",
+    "LEVEL_STAGES",
+    "parse_levels",
 ]

@@ -47,6 +47,7 @@ class EngineState(TypedDict, total=False):
     boundary_report: dict[str, Any]
     assertion_report: dict[str, Any]
     log_contract_report: dict[str, Any]
+    smoke_report: dict[str, Any]  # import-sweep health {total, imported, failures}
     audit_gap_report: dict[str, Any]  # AuditGapReport
     coverage_state: dict[str, Any]  # CoverageState
     integration_strategies: list[dict[str, Any]]

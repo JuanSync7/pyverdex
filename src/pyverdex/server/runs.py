@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..config import Config, GateMode, StageName
+from ..config import Config, GateMode, StageName, parse_levels
 from ..discovery import discover_config, project_info
 from ..graph import build_engine, initial_state
 
@@ -54,11 +54,16 @@ class RunManager:
         apply: bool = False,
         provider: Optional[str] = None,
         max_cycles: Optional[int] = None,
+        level: Optional[str] = None,
     ) -> Run:
         cfg = discover_config(path)
         # web flow is unattended: all gates auto
         cfg.stages = {n: cfg.stage(n).model_copy(update={"gate": GateMode.auto})
                       for n in StageName}
+        if level:
+            # restrict to the requested test level(s) (raises ValueError on a bad
+            # token — the API layer turns that into a 400)
+            cfg.apply_levels(parse_levels(level))
         cfg.generate.apply = apply
         cfg.integrate.apply = apply
         if provider:

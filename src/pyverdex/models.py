@@ -65,6 +65,25 @@ class ExclusionReason(str, Enum):
     unsupported_category = "unsupported-category"
 
 
+class TestLevel(str, Enum):
+    """The *kind* of test a stage produces (orthogonal to coverage tiers).
+
+    - ``smoke``: does the codebase import and does the existing suite pass
+      (the ``audit`` import-sweep + suite-run; no test authoring).
+    - ``unit``: an in-process test for one function's gap (``generate``).
+    - ``integration``: a real-service test for a boundary seam (``integrate``).
+    - ``e2e``: reserved end-to-end level (no dedicated harness yet; ``--level
+      e2e`` currently runs the integration pipeline — see ADR 0002).
+    """
+
+    __test__ = False  # the ``Test`` prefix would otherwise trip pytest collection
+
+    smoke = "smoke"
+    unit = "unit"
+    integration = "integration"
+    e2e = "e2e"
+
+
 # ---------------------------------------------------------------------------
 # IntegrationStrategy and supporting models (test-evaluate output)
 # ---------------------------------------------------------------------------
@@ -223,6 +242,10 @@ class FunctionCoverage(BaseModel):
     mutation_kill_rate: Optional[float] = None
     mutation_survivors: Optional[int] = None
 
+    # the level of the test authored for this function, when one was (unit for
+    # generate; boundary/integration tests are counted in the integration dim)
+    test_level: Optional[TestLevel] = None
+
     line_target: Optional[float] = None
     line_status: DimensionStatus = DimensionStatus.not_run
 
@@ -281,6 +304,11 @@ class UnifiedCoverageReport(BaseModel):
     # real-service integration tests written by the integrate apply path
     integration_tests_written: int = 0
     integration_tests_passed: int = 0
+    # count of authored/proposed tests by TestLevel value ("unit"/"integration"/…)
+    tests_by_level: dict[str, int] = Field(default_factory=dict)
+    # smoke import-sweep: source modules that import cleanly / total (None if not run)
+    smoke_modules_imported: Optional[int] = None
+    smoke_modules_total: Optional[int] = None
 
     overall_status: DimensionStatus = DimensionStatus.unknown
 
@@ -290,6 +318,7 @@ __all__ = [
     "BoundaryCategory",
     "LifecyclePattern",
     "ExclusionReason",
+    "TestLevel",
     "BoundarySummary",
     "ReplacementCandidate",
     "ExcludedCandidate",

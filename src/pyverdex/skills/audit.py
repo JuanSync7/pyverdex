@@ -53,6 +53,19 @@ def build_audit_graph(config: Config):
         test = Path(state["test_root"])
         out: dict = {"log": []}
 
+        # smoke: does every source module import? (the fast, no-LLM 'smoke' signal)
+        if config.audit.import_smoke and source.exists():
+            sm = adapters.run_import_smoke(
+                source, root, timeout=config.audit.import_smoke_timeout)
+            if sm.ok and sm.data is not None:
+                out["smoke_report"] = sm.data
+                out["log"].append(
+                    f"audit/snapshot: import smoke {sm.data.get('imported')}/"
+                    f"{sm.data.get('total')} modules import cleanly")
+            else:
+                out["log"].append("audit/snapshot: import smoke unavailable "
+                                  f"({sm.stderr[:120] or sm.parse_error})")
+
         gaps = adapters.run_coverage_gaps(root, source)
         if gaps.ok and gaps.data is not None:
             out["coverage_report"] = gaps.data

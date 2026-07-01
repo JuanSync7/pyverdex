@@ -18,6 +18,7 @@ from langgraph.graph import END, START, StateGraph
 from ..backends import LLMBackend
 from ..config import Config, StageName
 from ..knowledge import build_system_prompt
+from ..models import TestLevel
 from ..state import EngineState
 from ..tools import adapters
 from ._gates import human_gate
@@ -61,7 +62,8 @@ def build_integrate_graph(config: Config, backend: LLMBackend | None = None):
                 fn = (s.get("candidates") or [{}])[0].get("boundary_fn", "?")
                 errors.append(f"integrate/convert: {fn} failed: {exc}")
                 continue
-            proposals.append({**cand, "proposed_test": code})
+            proposals.append({**cand, "proposed_test": code,
+                              "test_level": TestLevel.integration.value})
         out: dict = {
             "int_pending": proposals,
             "log": [f"integrate/convert: drafted {len(proposals)} real-service tests"

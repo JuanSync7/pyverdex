@@ -20,6 +20,7 @@ from ..models import (
     DimensionStatus,
     EdgeRecord,
     FunctionCoverage,
+    TestLevel,
     TestQualityRecord,
     UnifiedCoverageReport,
 )
@@ -79,15 +80,23 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                 line_start=int(f.get("line_start", 0)), line_end=int(f.get("line_end", 0)),
             )
 
-    # --- mutation dimension (from generate stage, if any) ----------------
+    # --- mutation + test-level dimensions (from generate stage, if any) --
     for rec in generated:
         mod = rec.get("module", "?")
         name = rec.get("function_name") or rec.get("function", "?")
-        kr = rec.get("mutation_kill_rate")
         k = _key(mod, name)
-        if k in funcs and kr is not None:
+        if k not in funcs:
+            continue
+        kr = rec.get("mutation_kill_rate")
+        if kr is not None:
             funcs[k].mutation_kill_rate = kr
             funcs[k].mutation_survivors = rec.get("mutation_survivors")
+        lvl = rec.get("test_level")
+        if lvl and funcs[k].test_level is None:
+            try:  # assignment skips validation, so coerce the str to the enum
+                funcs[k].test_level = TestLevel(lvl)
+            except ValueError:
+                pass  # unrecognised level in state; leave the function untagged
 
     # --- assertion / test-quality dimension ------------------------------
     test_quality: list[TestQualityRecord] = []
@@ -206,6 +215,36 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                       + (f"; {problems}" if problems else "")),
             detail={"written": int_written, "passed": int_passed, "by_gate": by_gate},
         ))
+    # --- smoke dimension (import sweep from audit) -----------------------
+    smoke = state.get("smoke_report") or {}
+    smoke_total = smoke.get("total")
+    smoke_imported = smoke.get("imported")
+    if smoke:
+        failures = smoke.get("failures", [])
+        dims.append(DimensionRollup(
+            name="smoke (imports)",
+            status=DimensionStatus.passed if not failures else DimensionStatus.failed,
+            headline=(f"{smoke_imported}/{smoke_total} source modules import cleanly"
+                      + (f"; {len(failures)} fail to import" if failures else "")),
+            detail={"total": smoke_total, "imported": smoke_imported,
+                    "failures": [f.get("module") for f in failures][:20]},
+        ))
+
+    # --- test-levels dimension (by-level counts of authored/proposed tests) --
+    tests_by_level: dict[str, int] = {}
+    for rec in generated:
+        lvl = rec.get("test_level")
+        if lvl:
+            tests_by_level[lvl] = tests_by_level.get(lvl, 0) + 1
+    if tests_by_level:
+        summary = ", ".join(f"{n} {lvl}" for lvl, n in sorted(tests_by_level.items()))
+        dims.append(DimensionRollup(
+            name="test-levels",
+            status=DimensionStatus.passed,  # informational rollup, not a gate
+            headline=f"{summary} test(s)",
+            detail={"by_level": tests_by_level},
+        ))
+
     if state.get("lint_report"):
         lr = state["lint_report"]
         dims.append(DimensionRollup(
@@ -245,6 +284,9 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         cross_package_edges=len(edges),
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,
+        tests_by_level=tests_by_level,
+        smoke_modules_imported=smoke_imported,
+        smoke_modules_total=smoke_total,
         mutation_kill_rate=overall_kill,
         weak_tests=weak_tests,
         overall_status=overall,

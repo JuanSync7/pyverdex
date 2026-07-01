@@ -113,6 +113,56 @@ def test_cold_tier_relaxes_gate_when_configured():
     assert f2.line_status is DimensionStatus.failed
 
 
+def test_smoke_dimension_pass_and_fail():
+    """The smoke (imports) dimension mirrors the audit import-sweep: pass when
+    every module imports, fail (listing failures) when one doesn't."""
+    clean = _state()
+    clean["smoke_report"] = {"total": 5, "imported": 5, "failures": []}
+    r = build_unified_report(clean, Config())
+    d = next(d for d in r.dimensions if d.name == "smoke (imports)")
+    assert d.status is DimensionStatus.passed
+    assert "5/5 source modules import cleanly" in d.headline
+    assert r.smoke_modules_imported == 5 and r.smoke_modules_total == 5
+
+    broken = _state()
+    broken["smoke_report"] = {"total": 5, "imported": 4,
+                              "failures": [{"module": "pkg.bad", "error": "ImportError: x"}]}
+    r2 = build_unified_report(broken, Config())
+    d2 = next(d for d in r2.dimensions if d.name == "smoke (imports)")
+    assert d2.status is DimensionStatus.failed
+    assert "1 fail to import" in d2.headline
+    assert d2.detail["failures"] == ["pkg.bad"]
+    assert r2.overall_status is DimensionStatus.failed  # a failing dim fails overall
+
+
+def test_test_levels_dimension_counts_and_tags_function():
+    """A unit record tags its function's test_level and feeds the by-level count;
+    an integration record is counted too but tracked via the integration dim."""
+    st = _state()
+    st["generated"] = [
+        {"module": "m.a", "function_name": "f", "mutation_kill_rate": 1.0,
+         "mutation_survivors": 0, "test_level": "unit"},
+        {"module": "m.api", "boundary_fn": "handler", "test_path": "/t/a.py",
+         "gate": "pass", "test_level": "integration"},
+    ]
+    r = build_unified_report(st, Config())
+
+    assert r.tests_by_level == {"unit": 1, "integration": 1}
+    dim = next(d for d in r.dimensions if d.name == "test-levels")
+    assert dim.status is DimensionStatus.passed
+    assert dim.detail["by_level"] == {"unit": 1, "integration": 1}
+    # the unit record tagged its per-function view
+    f = next(f for f in r.functions if f.function_name == "f")
+    assert f.test_level == "unit"
+
+
+def test_no_test_levels_dimension_without_tagged_records():
+    r = build_unified_report(_state(), Config())  # generated records carry no level
+    assert r.tests_by_level == {}
+    assert not any(d.name == "test-levels" for d in r.dimensions)
+    assert not any(d.name == "smoke (imports)" for d in r.dimensions)
+
+
 def test_integration_dimension_counts_and_isolates():
     """The integration dimension counts only WRITTEN integrate records (boundary_fn
     + test_path), every gate outcome shows in by_gate, and integrate records never

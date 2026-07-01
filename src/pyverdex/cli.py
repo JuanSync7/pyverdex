@@ -17,7 +17,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .config import Config
+from .config import Config, parse_levels
 from .graph import build_engine, initial_state, make_checkpointer
 
 app = typer.Typer(add_completion=False, help="Multi-dimensional test-coverage engine.")
@@ -26,7 +26,7 @@ console = Console()
 
 def _load_config(config: Optional[str], project_root: Optional[str],
                  source: Optional[str], test: Optional[str],
-                 apply: bool = False) -> Config:
+                 level: Optional[str] = None, apply: bool = False) -> Config:
     cfg = Config.load(config)
     if project_root:
         cfg.project_root = project_root
@@ -34,6 +34,13 @@ def _load_config(config: Optional[str], project_root: Optional[str],
         cfg.paths.source_root = source
     if test:
         cfg.paths.test_root = test
+    if level:
+        # restrict to the stages the requested test level(s) need (orthogonal to
+        # coverage tiers). Bad tokens raise a clean typer error, not a traceback.
+        try:
+            cfg.apply_levels(parse_levels(level))
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
     if apply:
         # close the loop end-to-end: generate writes+mutates, integrate writes+checks
         cfg.generate.apply = True
@@ -104,14 +111,20 @@ def run(
     source: Optional[str] = typer.Option(None, "--source", help="Source root."),
     test: Optional[str] = typer.Option(None, "--test", help="Test root."),
     thread: str = typer.Option("pyverdex", "--thread", help="Run/thread id."),
+    level: Optional[str] = typer.Option(
+        None, "--level",
+        help="Restrict to test level(s), comma-separated: smoke, unit, integration, "
+             "e2e (e2e currently runs the integration pipeline). Omit to run every "
+             "stage."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve all gates."),
     apply: bool = typer.Option(
         False, "--apply",
         help="Close the loop: write approved generated + integration tests to disk "
              "(default is propose-only)."),
 ) -> None:
-    cfg = _load_config(config, project_root, source, test, apply)
+    cfg = _load_config(config, project_root, source, test, level, apply)
     console.print(f"[bold]pyverdex[/bold] verifying [cyan]{cfg.abs_source_root}[/cyan]"
+                  + (f"  [dim](level: {level})[/dim]" if level else "")
                   + ("  [dim](apply-mode)[/dim]" if apply else ""))
     state = _drive(cfg, initial_state(cfg), thread, yes)
     _print_log(state)

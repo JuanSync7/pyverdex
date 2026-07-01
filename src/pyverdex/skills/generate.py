@@ -29,6 +29,7 @@ from langgraph.graph import END, START, StateGraph
 from ..backends import LLMBackend
 from ..config import Config, StageName
 from ..knowledge import build_system_prompt
+from ..models import TestLevel
 from ..state import EngineState
 from ..tools import adapters
 from ._gates import human_gate
@@ -131,6 +132,7 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
             pending.append({"module": g["module"], "function_name": g["function_name"],
                             "tier": g.get("tier"), "coverage_pct": g.get("coverage_pct"),
                             "missing_lines": g.get("missing_lines"),
+                            "test_level": TestLevel.unit.value,
                             "proposed_test": code, "mutation_kill_rate": None})
         return {"cycle": cycle, "gen_pending": pending,
                 "log": [f"generate/author: drafted {len(pending)} tests via "

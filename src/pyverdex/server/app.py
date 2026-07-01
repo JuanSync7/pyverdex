@@ -59,6 +59,7 @@ class RunReq(BaseModel):
     apply: bool = False
     provider: Optional[str] = None
     max_cycles: Optional[int] = None
+    level: Optional[str] = None  # comma-separated test levels; None => all stages
 
 
 def create_app(
@@ -192,8 +193,8 @@ def create_app(
         _resolve_approved(req.path)  # only run in an approved project
         try:
             run = MANAGER.start(req.path, apply=req.apply, provider=req.provider,
-                                max_cycles=req.max_cycles)
-        except (NotADirectoryError, FileNotFoundError) as exc:
+                                max_cycles=req.max_cycles, level=req.level)
+        except (NotADirectoryError, FileNotFoundError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"run_id": run.id, "info": run.info}
 

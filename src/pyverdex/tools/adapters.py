@@ -253,6 +253,80 @@ def coverage_totals(project_root: Path, source_root: Path) -> ToolResult:
     return ToolResult(tool="coverage-totals", returncode=0, data=data)
 
 
+# Subprocess body for the import smoke sweep: put ``source_root`` on sys.path,
+# then import every module whose path maps to a valid dotted name (which also
+# supports PEP 420 namespace packages — no ``__init__.py`` required — while
+# skipping dirs/files with non-identifier names), recording import-time
+# failures. ``SystemExit`` at import is caught as a failure (not a crash);
+# ``KeyboardInterrupt`` still aborts. Runs isolated so a target module's import
+# side effects never touch the engine process.
+_IMPORT_SMOKE_SRC = r"""
+import importlib, json, sys
+from pathlib import Path
+
+src = Path(sys.argv[1]).resolve()
+excludes = set(sys.argv[2:])
+sys.path.insert(0, str(src))
+
+failures = []
+total = 0
+for py in sorted(src.rglob("*.py")):
+    parts = py.relative_to(src).parts
+    if any(p in excludes for p in parts):
+        continue
+    mod_parts = parts[:-1] if py.name == "__init__.py" else (*parts[:-1], py.stem)
+    # a dotted import only resolves when every component is a valid identifier;
+    # namespace packages (PEP 420) resolve without __init__.py since src is on path
+    if not mod_parts or not all(p.isidentifier() for p in mod_parts):
+        continue
+    dotted = ".".join(mod_parts)
+    total += 1
+    try:
+        importlib.import_module(dotted)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - import-time SystemExit etc. IS the signal
+        failures.append({"module": dotted, "error": f"{type(exc).__name__}: {exc}"})
+print(json.dumps({"total": total, "imported": total - len(failures),
+                  "failures": failures}))
+"""
+
+
+def run_import_smoke(
+    source_root: Path,
+    project_root: Path,
+    *,
+    exclude: Optional[list[str]] = None,
+    timeout: float = 120.0,
+) -> ToolResult:
+    """Import every source module in a subprocess to catch import-time errors.
+
+    This is the deterministic 'smoke' signal — before any test is authored, does
+    the codebase even import? Returns ``{total, imported, failures[]}`` where each
+    failure is ``{module, error}``. Runs with ``project_root`` as cwd so imports
+    resolve the same way the suite does; degrades to rc=2 if the sweep can't run.
+    """
+    parts = ["__pycache__", ".git", ".venv"] + list(exclude or [])
+    cmd = [sys.executable, "-c", _IMPORT_SMOKE_SRC, str(source_root), *parts]
+    try:
+        proc = subprocess.run(
+            cmd, cwd=str(project_root), capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult(tool="import-smoke", returncode=124, timed_out=True,
+                          stderr=f"import sweep timed out after {timeout}s")
+    if proc.returncode != 0:
+        return ToolResult(tool="import-smoke", returncode=2,
+                          stdout=proc.stdout, stderr=proc.stderr or "import sweep crashed")
+    out = proc.stdout.strip()
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError as exc:
+        return ToolResult(tool="import-smoke", returncode=2, stdout=proc.stdout,
+                          parse_error=f"non-JSON stdout: {exc}")
+    return ToolResult(tool="import-smoke", returncode=0, data=data, stdout=proc.stdout)
+
+
 def run_edges(
     source_root: Path,
     *,
@@ -406,6 +480,7 @@ __all__ = [
     "run_secret_scan",
     "collect_coverage",
     "run_coverage_gaps",
+    "run_import_smoke",
     "run_edges",
     "run_branch_map",
     "run_boundary",
