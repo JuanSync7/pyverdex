@@ -125,6 +125,7 @@ def initial_state(config: Config) -> EngineState:
         cycle=0,
         generated=[],
         gen_pending=[],
+        int_pending=[],
         gen_handled=[],
         integration_strategies=[],
         approvals={},

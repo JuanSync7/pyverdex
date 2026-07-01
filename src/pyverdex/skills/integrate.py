@@ -95,7 +95,9 @@ def build_integrate_graph(config: Config, backend: LLMBackend | None = None):
             status = "syntax-error"
         else:
             scan = adapters.run_secret_scan(tpath)
-            if scan.ok and scan.data and scan.data.get("has_secrets"):
+            if not scan.ok or scan.data is None:
+                status = "secret-scan-error"  # security gate fails CLOSED, never skips
+            elif scan.data.get("has_secrets"):
                 secrets = [f.get("pattern_name", "?") for f in scan.data.get("findings", [])]
                 status = "secret-found"  # never keep a test that leaks credentials
             elif green_run(root, tpath)[0] is False:
@@ -116,7 +118,7 @@ def build_integrate_graph(config: Config, backend: LLMBackend | None = None):
         pending = state.get("int_pending", [])
         approved = state.get("approvals", {}).get("integrate", {}).get("approve", False)
         if not pending:
-            return {"log": ["integrate/apply: nothing to apply"]}
+            return {"int_pending": [], "log": ["integrate/apply: nothing to apply"]}
         if not approved:
             return {"int_pending": [],
                     "log": ["integrate/apply: batch rejected at gate; discarded"]}
@@ -125,13 +127,21 @@ def build_integrate_graph(config: Config, backend: LLMBackend | None = None):
                     "int_pending": [],
                     "log": [f"integrate/apply: propose-only, recorded {len(pending)} "
                             "drafts (set integrate.apply=true to write + check)"]}
-        finalized, logs = [], []
+        finalized, logs, errors = [], [], []
         for p in pending:
-            rec, log = _finalize(state, p)
+            # one bad proposal (e.g. an unwritable path) must not kill the batch
+            try:
+                rec, log = _finalize(state, p)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"integrate/apply: {p.get('boundary_fn', '?')} failed: {exc}")
+                continue
             finalized.append(rec)
             logs.append(log)
-        return {"generated": [*state.get("generated", []), *finalized],
-                "int_pending": [], "log": logs}
+        out: dict = {"generated": [*state.get("generated", []), *finalized],
+                     "int_pending": [], "log": logs}
+        if errors:
+            out["errors"] = errors
+        return out
 
     g = StateGraph(EngineState)
     g.add_node("plan", plan)

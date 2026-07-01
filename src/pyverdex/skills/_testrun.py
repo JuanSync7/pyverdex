@@ -45,6 +45,8 @@ def green_run(root: Path, test_path: Path, timeout: float = 120.0) -> tuple[bool
         )
     except subprocess.TimeoutExpired:
         return False, "green-run timed out"
+    except OSError as exc:  # e.g. cwd gone, interpreter/pytest missing
+        return False, f"green-run could not start: {exc}"
     return proc.returncode == 0, (proc.stdout or proc.stderr)[-500:]
 
 
@@ -57,8 +59,11 @@ def flakiness(root: Path, test_path: Path, thresholds: Thresholds) -> tuple[bool
     test is never rejected merely because the checker could not run. ``root`` is
     the cwd so the reruns resolve the project's imports (same as the green-run).
     """
-    res = adapters.run_flakiness(
-        str(test_path), runs=thresholds.flakiness_min_runs, cwd=root)
+    try:
+        res = adapters.run_flakiness(
+            str(test_path), runs=thresholds.flakiness_min_runs, cwd=root)
+    except Exception:  # noqa: BLE001 - flakiness is advisory; never crash the caller
+        return False, None
     if not res.ok or res.data is None:
         return False, None
     fail_rate = res.data.get("fail_rate")

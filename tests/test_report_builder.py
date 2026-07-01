@@ -111,3 +111,29 @@ def test_cold_tier_relaxes_gate_when_configured():
     f2 = next(f for f in build_unified_report(st, Config()).functions if f.function_name == "h")
     assert f2.tier == "standard"
     assert f2.line_status is DimensionStatus.failed
+
+
+def test_integration_dimension_counts_and_isolates():
+    """The integration dimension counts only WRITTEN integrate records (boundary_fn
+    + test_path), every gate outcome shows in by_gate, and integrate records never
+    pollute the per-function (mutation) view."""
+    st = _state()
+    st["generated"] = [
+        {"module": "m.api", "boundary_fn": "handler", "test_path": "/t/a.py", "gate": "pass"},
+        {"module": "m.db", "boundary_fn": "save", "test_path": "/t/b.py",
+         "gate": "secret-found", "secrets": ["aws_access_key"]},
+        {"module": "m.q", "boundary_fn": "enqueue", "test_path": "/t/c.py", "gate": "red"},
+        # propose-only integrate record (boundary_fn but NO test_path) => excluded
+        {"module": "m.x", "boundary_fn": "y", "proposed_test": "..."},
+        # a generate record (function_name, not boundary_fn) => excluded from integration
+        {"module": "m.a", "function_name": "f", "mutation_kill_rate": 1.0},
+    ]
+    r = build_unified_report(st, Config())
+
+    assert r.integration_tests_written == 3   # only the boundary_fn + test_path rows
+    assert r.integration_tests_passed == 1
+    dim = next(d for d in r.dimensions if d.name.startswith("integration"))
+    assert dim.status is DimensionStatus.failed  # 2 of 3 failed
+    assert dim.detail["by_gate"] == {"pass": 1, "secret-found": 1, "red": 1}
+    # the generate record still merges into its function, not the integration count
+    assert next(f for f in r.functions if f.function_name == "f").mutation_kill_rate == 1.0

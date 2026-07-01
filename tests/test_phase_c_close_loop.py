@@ -98,10 +98,55 @@ def test_integrate_apply_writes_and_passes(tmp_path):
     out = _run_integrate(cfg, FakeBackend(lambda _p: REAL_INT_TEST))
 
     rec = next(r for r in out["generated"] if r.get("boundary_fn") == "classify")
-    assert rec["gate"] == "pass"          # written, green, secret-clean, stable
+    # real green-run + real secret-scan; flakiness is stubbed stable by conftest
+    assert rec["gate"] == "pass"
     assert rec["secrets"] is None
+    assert rec["flakiness_fail_rate"] == 0.0  # the (stubbed) checker was invoked
     assert Path(rec["test_path"]).exists()  # a real file on disk
     assert (project / "tests" / "pyverdex_integration").exists()
+
+
+def test_integrate_apply_rejects_flaky(tmp_path, monkeypatch):
+    # override the conftest stub: the checker reports the written test as flaky
+    monkeypatch.setattr(adapters, "run_flakiness", lambda *a, **k: ToolResult(
+        tool="flakiness-checker", returncode=1,
+        data={"total_runs": 10, "failures": 7, "fail_rate": 0.7,
+              "status": "flaky-quarantined"}))
+    project = tmp_path / "proj"
+    shutil.copytree(SAMPLE, project)
+    cfg = _integrate_cfg(project, tmp_path, apply=True)
+    out = _run_integrate(cfg, FakeBackend(lambda _p: REAL_INT_TEST))
+
+    rec = next(r for r in out["generated"] if r.get("boundary_fn") == "classify")
+    assert rec["gate"] == "flaky"
+    assert rec["flakiness_fail_rate"] == 0.7
+
+
+def test_integrate_secret_scan_error_fails_closed(tmp_path, monkeypatch):
+    # if the secret scanner errors, the security gate must NOT silently pass
+    monkeypatch.setattr(adapters, "run_secret_scan", lambda *a, **k: ToolResult(
+        tool="secret-scanner", returncode=2, stderr="scanner blew up"))
+    project = tmp_path / "proj"
+    shutil.copytree(SAMPLE, project)
+    cfg = _integrate_cfg(project, tmp_path, apply=True)
+    out = _run_integrate(cfg, FakeBackend(lambda _p: REAL_INT_TEST))
+
+    rec = next(r for r in out["generated"] if r.get("boundary_fn") == "classify")
+    assert rec["gate"] == "secret-scan-error"  # fail-closed, never "pass"
+
+
+def test_integrate_resilient_to_flakiness_error(tmp_path, monkeypatch):
+    # a flakiness-checker error is advisory: a good test is still recorded as pass
+    monkeypatch.setattr(adapters, "run_flakiness", lambda *a, **k: ToolResult(
+        tool="flakiness-checker", returncode=2, stderr="checker unavailable"))
+    project = tmp_path / "proj"
+    shutil.copytree(SAMPLE, project)
+    cfg = _integrate_cfg(project, tmp_path, apply=True)
+    out = _run_integrate(cfg, FakeBackend(lambda _p: REAL_INT_TEST))
+
+    rec = next(r for r in out["generated"] if r.get("boundary_fn") == "classify")
+    assert rec["gate"] == "pass"                 # not rejected by an unavailable checker
+    assert rec["flakiness_fail_rate"] is None    # but recorded as un-measured
 
 
 def test_integrate_apply_rejects_leaked_secret(tmp_path):

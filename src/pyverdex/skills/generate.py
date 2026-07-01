@@ -230,16 +230,26 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
                             "drafts (set generate.apply=true to write + gate)"]}
 
         system = build_system_prompt("generate", references=("assertion-policy",))
-        finalized, logs = [], []
+        finalized, logs, errors = [], [], []
         for p in pending:
-            rec, log = _finalize_gap(state, p, system)
+            # one bad gap (tool crash, unwritable path) must not kill the batch
+            try:
+                rec, log = _finalize_gap(state, p, system)
+            except Exception as exc:  # noqa: BLE001
+                rec = {"module": p.get("module"), "function_name": p.get("function_name"),
+                       "gate": "error"}
+                log = f"generate/apply: {p.get('module')}.{p.get('function_name')} [error: {exc}]"
+                errors.append(log)
             finalized.append(rec)
             logs.append(log)
             handled.append(f"{p['module']}::{p['function_name']}")
 
-        return {"generated": [*state.get("generated", []), *finalized],
-                "gen_pending": [], "gen_handled": handled, "loop_exhausted": False,
-                "log": logs}
+        out: dict = {"generated": [*state.get("generated", []), *finalized],
+                     "gen_pending": [], "gen_handled": handled, "loop_exhausted": False,
+                     "log": logs}
+        if errors:
+            out["errors"] = errors
+        return out
 
     g = StateGraph(EngineState)
     g.add_node("select", select)

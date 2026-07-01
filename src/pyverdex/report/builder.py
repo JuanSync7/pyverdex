@@ -192,16 +192,19 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
     int_written = len(int_records)
     int_passed = sum(1 for r in int_records if r.get("gate") == "pass")
     if int_records:
-        int_secret = sum(1 for r in int_records if r.get("gate") == "secret-found")
-        int_flaky = sum(1 for r in int_records if r.get("gate") == "flaky")
+        by_gate: dict[str, int] = {}
+        for r in int_records:
+            g = r.get("gate", "unknown")
+            by_gate[g] = by_gate.get(g, 0) + 1
         failed = int_written - int_passed
+        # list every non-pass outcome (secret-found / secret-scan-error / red / flaky / …)
+        problems = ", ".join(f"{n} {g}" for g, n in sorted(by_gate.items()) if g != "pass")
         dims.append(DimensionRollup(
             name="integration (real-service)",
             status=DimensionStatus.passed if failed == 0 else DimensionStatus.failed,
             headline=(f"{int_passed}/{int_written} real-service tests pass"
-                      + (f"; {int_secret} leaked secrets, {int_flaky} flaky" if failed else "")),
-            detail={"written": int_written, "passed": int_passed,
-                    "secret_found": int_secret, "flaky": int_flaky},
+                      + (f"; {problems}" if problems else "")),
+            detail={"written": int_written, "passed": int_passed, "by_gate": by_gate},
         ))
     if state.get("lint_report"):
         lr = state["lint_report"]
