@@ -365,10 +365,15 @@ def run_flakiness(
     runs: int = 10,
     timeout_per_run: float = 120.0,
     timeout: float = 3600.0,
+    cwd: Optional[Path] = None,
 ) -> ToolResult:
+    """Re-run one test N times to detect flakiness. ``cwd`` must be the target
+    project root so the reruns resolve the project's imports/conftest (the same
+    directory used for the green-run)."""
     return _run_module(
         "flakiness_checker.flakiness_checker",
         [test_node_id, "--runs", str(runs), "--timeout", str(timeout_per_run)],
+        cwd=cwd,
         timeout=timeout,
     )
 

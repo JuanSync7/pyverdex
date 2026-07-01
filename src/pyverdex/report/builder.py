@@ -187,6 +187,22 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         headline=(f"{weak_tests}/{len(test_quality)} tests below {thresholds.assertion_score}"
                   if test_quality else "not run"),
     ))
+    # --- integration dimension (real-service tests written by integrate apply) --
+    int_records = [r for r in generated if "boundary_fn" in r and r.get("test_path")]
+    int_written = len(int_records)
+    int_passed = sum(1 for r in int_records if r.get("gate") == "pass")
+    if int_records:
+        int_secret = sum(1 for r in int_records if r.get("gate") == "secret-found")
+        int_flaky = sum(1 for r in int_records if r.get("gate") == "flaky")
+        failed = int_written - int_passed
+        dims.append(DimensionRollup(
+            name="integration (real-service)",
+            status=DimensionStatus.passed if failed == 0 else DimensionStatus.failed,
+            headline=(f"{int_passed}/{int_written} real-service tests pass"
+                      + (f"; {int_secret} leaked secrets, {int_flaky} flaky" if failed else "")),
+            detail={"written": int_written, "passed": int_passed,
+                    "secret_found": int_secret, "flaky": int_flaky},
+        ))
     if state.get("lint_report"):
         lr = state["lint_report"]
         dims.append(DimensionRollup(
@@ -224,6 +240,8 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         executable_lines=executable_lines,
         overall_line_coverage_pct=overall_line,
         cross_package_edges=len(edges),
+        integration_tests_written=int_written,
+        integration_tests_passed=int_passed,
         mutation_kill_rate=overall_kill,
         weak_tests=weak_tests,
         overall_status=overall,

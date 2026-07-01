@@ -166,6 +166,13 @@ class GenerateConfig(BaseModel):
         return v
 
 
+class IntegrateConfig(BaseModel):
+    """Apply-mode for the integrate stage (real-service tests)."""
+
+    apply: bool = False  # write proposed integration tests to disk + gate them
+    generated_subdir: str = "pyverdex_integration"  # under test_root (kept separate)
+
+
 class LoopConfig(BaseModel):
     max_cycles: int = 3  # audit→generate→audit loop bound
     max_gaps_per_cycle: int = 10
@@ -218,6 +225,7 @@ class Config(BaseSettings):
     model: ModelConfig = Field(default_factory=ModelConfig)
     loop: LoopConfig = Field(default_factory=LoopConfig)
     generate: GenerateConfig = Field(default_factory=GenerateConfig)
+    integrate: IntegrateConfig = Field(default_factory=IntegrateConfig)
     stages: dict[StageName, StageConfig] = Field(default_factory=_default_stages)
 
     # --- derived absolute paths -------------------------------------------
@@ -281,6 +289,7 @@ __all__ = [
     "StageConfig",
     "ModelConfig",
     "GenerateConfig",
+    "IntegrateConfig",
     "LoopConfig",
     "PathsConfig",
     "Config",

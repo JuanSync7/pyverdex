@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import ast
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
@@ -34,6 +32,7 @@ from ..knowledge import build_system_prompt
 from ..state import EngineState
 from ..tools import adapters
 from ._gates import human_gate
+from ._testrun import flakiness, green_run, test_path, valid_python
 
 _FENCE_BLOCK = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.DOTALL)
 
@@ -46,14 +45,6 @@ def _strip_code(text: str) -> str:
     if blocks:
         return max(blocks, key=len).strip() + "\n"
     return text.strip() + "\n"
-
-
-def _valid_python(code: str) -> bool:
-    try:
-        ast.parse(code)
-        return True
-    except SyntaxError:
-        return False
 
 
 def _assertion_weakness(code: str, min_assertions: int) -> str:
@@ -77,26 +68,8 @@ def _assertion_weakness(code: str, min_assertions: int) -> str:
     return ""
 
 
-def _green_run(root: Path, test_path: Path, timeout: float = 120.0) -> tuple[bool, str]:
-    """Run pytest on one test file; (passed, short_output). rc 0 == green."""
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pytest", str(test_path), "-q",
-             "-p", "no:cacheprovider"],
-            cwd=str(root), capture_output=True, text=True, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "green-run timed out"
-    return proc.returncode == 0, (proc.stdout or proc.stderr)[-500:]
-
-
 def _module_file(source_root: Path, dotted: str) -> Path:
     return source_root.joinpath(*dotted.split(".")).with_suffix(".py")
-
-
-def _test_path(test_root: Path, subdir: str, module: str, fn: str) -> Path:
-    slug = module.replace(".", "_")
-    return test_root / subdir / f"test_{slug}_{fn}.py"
 
 
 def build_generate_graph(config: Config, backend: LLMBackend | None = None):
@@ -178,19 +151,19 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
         root = Path(state["project_root"])
         test_root = Path(state["test_root"])
         module, fn = p["module"], p["function_name"]
-        tpath = _test_path(test_root, gen.generated_subdir, module, fn)
+        tpath = test_path(test_root, gen.generated_subdir, module, fn)
         tpath.parent.mkdir(parents=True, exist_ok=True)
         mod_file = _module_file(source, module)
 
         code = p["proposed_test"]
-        kill_rate, survivors, status = None, None, "unknown"
+        kill_rate, survivors, fail_rate, status = None, None, None, "unknown"
         attempts = gen.restrengthen_attempts + 1
         for attempt in range(attempts):
             tpath.write_text(code, encoding="utf-8")
             feedback = ""
-            if not _valid_python(code):
+            if not valid_python(code):
                 status, feedback = "syntax-error", "output was not valid Python."
-            elif (gr := _green_run(root, tpath))[0] is False:
+            elif (gr := green_run(root, tpath))[0] is False:
                 status, feedback = "red", f"the test failed when run:\n{gr[1]}"
             elif not mod_file.exists():
                 status = "module-not-found"
@@ -198,7 +171,14 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
             elif weak := _assertion_weakness(code, config.thresholds.assertion_min):
                 # cheap screen before spending mutation budget on a doomed test
                 status, feedback = "weak-assertions", weak
+            elif (fk := flakiness(root, tpath, config.thresholds))[0]:
+                # prove the test is stable before mutation-gating it
+                fail_rate = fk[1]
+                status, feedback = "flaky", (
+                    f"test is flaky (fail rate {fk[1]:.0%} over "
+                    f"{config.thresholds.flakiness_min_runs} runs); make it deterministic.")
             else:
+                fail_rate = fk[1]
                 res = adapters.run_mutation(
                     mod_file, function=fn, max_lines=gen.mutation_max_lines,
                     timeout_per_mutant=gen.mutation_timeout, cwd=root)
@@ -226,7 +206,8 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
                 break
 
         rec = {**p, "test_path": str(tpath), "mutation_kill_rate": kill_rate,
-               "mutation_survivors": survivors, "gate": status}
+               "mutation_survivors": survivors, "flakiness_fail_rate": fail_rate,
+               "gate": status}
         rec.pop("proposed_test", None)
         log = (f"generate/apply: {module}.{fn} -> {tpath.name} [{status}"
                + (f", kill={kill_rate:.0%}]" if isinstance(kill_rate, float) else "]"))

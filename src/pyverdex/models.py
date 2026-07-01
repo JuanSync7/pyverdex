@@ -278,6 +278,9 @@ class UnifiedCoverageReport(BaseModel):
     cross_package_edges: int = 0
     mutation_kill_rate: Optional[float] = None
     weak_tests: int = 0
+    # real-service integration tests written by the integrate apply path
+    integration_tests_written: int = 0
+    integration_tests_passed: int = 0
 
     overall_status: DimensionStatus = DimensionStatus.unknown
 

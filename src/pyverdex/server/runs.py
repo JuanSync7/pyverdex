@@ -60,6 +60,7 @@ class RunManager:
         cfg.stages = {n: cfg.stage(n).model_copy(update={"gate": GateMode.auto})
                       for n in StageName}
         cfg.generate.apply = apply
+        cfg.integrate.apply = apply
         if provider:
             cfg.model.provider = provider
         if max_cycles is not None:

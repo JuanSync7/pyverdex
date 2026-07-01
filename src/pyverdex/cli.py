@@ -25,7 +25,8 @@ console = Console()
 
 
 def _load_config(config: Optional[str], project_root: Optional[str],
-                 source: Optional[str], test: Optional[str]) -> Config:
+                 source: Optional[str], test: Optional[str],
+                 apply: bool = False) -> Config:
     cfg = Config.load(config)
     if project_root:
         cfg.project_root = project_root
@@ -33,6 +34,10 @@ def _load_config(config: Optional[str], project_root: Optional[str],
         cfg.paths.source_root = source
     if test:
         cfg.paths.test_root = test
+    if apply:
+        # close the loop end-to-end: generate writes+mutates, integrate writes+checks
+        cfg.generate.apply = True
+        cfg.integrate.apply = True
     cfg.ensure_dirs()
     return cfg
 
@@ -100,9 +105,14 @@ def run(
     test: Optional[str] = typer.Option(None, "--test", help="Test root."),
     thread: str = typer.Option("pyverdex", "--thread", help="Run/thread id."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve all gates."),
+    apply: bool = typer.Option(
+        False, "--apply",
+        help="Close the loop: write approved generated + integration tests to disk "
+             "(default is propose-only)."),
 ) -> None:
-    cfg = _load_config(config, project_root, source, test)
-    console.print(f"[bold]pyverdex[/bold] verifying [cyan]{cfg.abs_source_root}[/cyan]")
+    cfg = _load_config(config, project_root, source, test, apply)
+    console.print(f"[bold]pyverdex[/bold] verifying [cyan]{cfg.abs_source_root}[/cyan]"
+                  + ("  [dim](apply-mode)[/dim]" if apply else ""))
     state = _drive(cfg, initial_state(cfg), thread, yes)
     _print_log(state)
     _print_summary(state)

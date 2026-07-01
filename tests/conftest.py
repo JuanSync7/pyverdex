@@ -18,6 +18,25 @@ def _stages(enabled: set[StageName], gated: set[StageName]) -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _fast_flakiness(monkeypatch):
+    """Stub the (slow, N×-rerun) flakiness checker to an instant 'stable' result so
+    the apply-mode tests don't re-run pytest 10× each. Tests that assert on flaky
+    detection override ``adapters.run_flakiness`` themselves (their setattr runs
+    after this fixture, so it wins)."""
+    from pyverdex.tools import adapters
+    from pyverdex.tools.adapters import ToolResult
+
+    def _stable(test_node_id, *, runs: int = 10, timeout_per_run: float = 120.0,
+                timeout: float = 3600.0, cwd=None) -> ToolResult:
+        return ToolResult(
+            tool="flakiness-checker", returncode=0,
+            data={"test_id": str(test_node_id), "total_runs": runs,
+                  "failures": 0, "fail_rate": 0.0, "status": "stable"})
+
+    monkeypatch.setattr(adapters, "run_flakiness", _stable)
+
+
 @pytest.fixture
 def sample_root() -> Path:
     return SAMPLE

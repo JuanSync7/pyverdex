@@ -52,6 +52,7 @@ class EngineState(TypedDict, total=False):
     integration_strategies: list[dict[str, Any]]
     generated: list[dict[str, Any]]  # finalized per-gap generation results
     gen_pending: list[dict[str, Any]]  # this cycle's authored-but-not-applied tests
+    int_pending: list[dict[str, Any]]  # integrate's drafted-but-not-applied proposals
     gen_handled: list[str]  # "module::fn" already authored (don't re-author in loop)
 
     # --- unified output ---------------------------------------------------
