@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  api, Dimension, fetchSession, FunctionCoverage, getApiBase, ProjectInfo, Report,
-  sampleReportUrl, setApiBase, STATIC_DEMO,
+  api, Dimension, edgeLabel, fetchSession, FunctionCoverage, getApiBase, ProjectInfo,
+  Report, sampleReportUrl, setApiBase, STATIC_DEMO,
 } from "./api";
 import { Terminal } from "./Terminal";
 
@@ -209,13 +209,7 @@ export function App() {
               {report.functions_with_line_gaps} line gaps ({report.boundary_gaps} boundary,
               avg {pct(report.overall_line_coverage_pct)})
             </span>
-            <span>
-              {report.function_edges_total > 0
-                ? report.edge_coverage_pct === null
-                  ? `${report.function_edges_total} edges mapped`
-                  : `edges ${pct(report.edge_coverage_pct)} (${report.function_edges_exercised}/${report.function_edges_total})`
-                : `${report.cross_package_edges} edges`}
-            </span>
+            <span>{edgeLabel(report)}</span>
             <span>mutation {report.mutation_kill_rate === null ? "—" : `${Math.round(report.mutation_kill_rate * 100)}%`}</span>
             <span>{report.weak_tests} weak tests</span>
           </section>

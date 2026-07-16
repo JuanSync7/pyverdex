@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pyverdex.config import Config
 from pyverdex.skills._edges import (
     build_function_edges,
     compute_edge_coverage,
     edge_coverage,
 )
+from pyverdex.skills.audit import build_audit_graph
 
 
 def _src(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -207,3 +209,59 @@ def test_edge_coverage_end_to_end_with_real_coverage(tmp_path):
     assert ec["have_coverage"] is True
     # only edge is top->used, and its call site executed
     assert ec["total"] == 1 and ec["exercised"] == 1 and ec["pct"] == 100.0
+
+
+# --- integration: the audit graph wires edge_coverage into state ------------
+
+def _mini_project(tmp_path: Path) -> Path:
+    """A runnable pytest project with one exercised and one dead call edge."""
+    (tmp_path / "pytest.ini").write_text("[pytest]\npythonpath = src\n", encoding="utf-8")
+    pkg = tmp_path / "src" / "pkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "core.py").write_text(
+        "def helper():\n    return 1\n\n"
+        "def other():\n    return 2\n\n"
+        "def top():\n    return helper()\n\n"   # edge top->helper (exercised)
+        "def cold():\n    return other()\n",     # edge cold->other (never called)
+        encoding="utf-8",
+    )
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_core.py").write_text(
+        "from pkg.core import top\n\ndef test_top():\n    assert top() == 1\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def _audit_cfg(proj: Path) -> Config:
+    cfg = Config()
+    cfg.project_root = str(proj)
+    cfg.paths.source_root = "src"
+    cfg.paths.test_root = "tests"
+    return cfg
+
+
+def _audit_state(cfg: Config) -> dict:
+    return {"project_root": str(cfg.root), "source_root": str(cfg.abs_source_root),
+            "test_root": str(cfg.abs_test_root), "log": [], "errors": []}
+
+
+def test_audit_wires_edge_coverage_into_state(tmp_path):
+    cfg = _audit_cfg(_mini_project(tmp_path))
+    out = build_audit_graph(cfg).invoke(_audit_state(cfg))
+    ec = out["edge_coverage"]
+    assert ec["have_coverage"] is True
+    assert ec["total"] == 2  # top->helper, cold->other
+    assert ec["exercised"] == 1  # only top() ran
+    assert ec["pct"] == 50.0
+    # the dead edge is the "what to test next" item
+    assert any(e["caller_function"] == "cold" for e in ec["uncovered"])
+
+
+def test_audit_edge_coverage_toggle_off(tmp_path):
+    cfg = _audit_cfg(_mini_project(tmp_path))
+    cfg.audit.edge_coverage = False
+    out = build_audit_graph(cfg).invoke(_audit_state(cfg))
+    assert "edge_coverage" not in out

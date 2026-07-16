@@ -187,3 +187,37 @@ def test_integration_dimension_counts_and_isolates():
     assert dim.detail["by_gate"] == {"pass": 1, "secret-found": 1, "red": 1}
     # the generate record still merges into its function, not the integration count
     assert next(f for f in r.functions if f.function_name == "f").mutation_kill_rate == 1.0
+
+
+def test_edge_dimension_reports_function_coverage_ratio():
+    """With edge_coverage in state, the edge dimension leads with the % and a
+    'what to test next' worklist; the vendored cross-package count stays as detail."""
+    st = _state()
+    st["edge_coverage"] = {
+        "total": 4, "exercised": 3, "pct": 75.0, "have_coverage": True,
+        "uncovered_total": 1,
+        "uncovered": [{"caller_module": "m.a", "caller_function": "f",
+                       "callee_module": "m.b", "callee_function": "g",
+                       "call_sites": [7]}],
+    }
+    r = build_unified_report(st, Config())
+    assert r.edge_coverage_pct == 75.0
+    assert r.function_edges_total == 4
+    assert r.function_edges_exercised == 3
+    edge = next(d for d in r.dimensions if d.name.startswith("edge"))
+    assert "75.0% function" in edge.headline
+    assert edge.detail["uncovered_sample"] == ["m.a.f → m.b.g"]
+    assert edge.detail["cross_package_edges"] == 1  # legacy map still surfaced
+
+
+def test_edge_dimension_without_coverage_numerator():
+    """No .coverage numerator: pct/exercised stay None (NOT 0), headline says mapped."""
+    st = _state()
+    st["edge_coverage"] = {"total": 2, "exercised": None, "pct": None,
+                           "have_coverage": False, "uncovered_total": 2, "uncovered": []}
+    r = build_unified_report(st, Config())
+    assert r.edge_coverage_pct is None
+    assert r.function_edges_exercised is None  # honest: "no data", not "zero exercised"
+    assert r.function_edges_total == 2
+    edge = next(d for d in r.dimensions if d.name.startswith("edge"))
+    assert "mapped" in edge.headline and "no coverage numerator" in edge.headline

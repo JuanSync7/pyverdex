@@ -56,6 +56,17 @@ export interface Report {
   edges: EdgeRecord[];
 }
 
+/** Verdict-row edge label: the function->function coverage ratio when we have
+ * one, map-only when there's no numerator, else the legacy cross-package count. */
+export function edgeLabel(r: Report): string {
+  if (r.function_edges_total > 0) {
+    return r.edge_coverage_pct === null
+      ? `${r.function_edges_total} edges mapped`
+      : `edges ${r.edge_coverage_pct}% (${r.function_edges_exercised}/${r.function_edges_total})`;
+  }
+  return `${r.cross_package_edges} edges`;
+}
+
 // Static-demo build (GitHub Pages): no backend, render a bundled sample report.
 export const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === "1";
 
