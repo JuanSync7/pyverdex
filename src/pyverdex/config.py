@@ -180,6 +180,7 @@ class AuditConfig(BaseModel):
 
     import_smoke: bool = True  # import every source module to catch import-time errors
     import_smoke_timeout: float = 120.0  # seconds for the whole import sweep
+    edge_coverage: bool = True  # measure function->function call-edge coverage
 
     @field_validator("import_smoke_timeout")
     @classmethod

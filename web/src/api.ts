@@ -45,6 +45,10 @@ export interface Report {
   executable_lines: number | null;
   overall_line_coverage_pct: number | null;
   cross_package_edges: number;
+  // function->function call-edge coverage (call-site-covered); null with no numerator
+  edge_coverage_pct: number | null;
+  function_edges_total: number;
+  function_edges_exercised: number;
   mutation_kill_rate: number | null;
   weak_tests: number;
   dimensions: Dimension[];

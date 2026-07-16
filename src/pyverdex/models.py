@@ -299,6 +299,11 @@ class UnifiedCoverageReport(BaseModel):
     # ``whole_line_coverage_pct`` for the real number.
     overall_line_coverage_pct: Optional[float] = None
     cross_package_edges: int = 0
+    # function->function call-edge coverage (call-site-covered); pct None when
+    # there is no .coverage numerator (edges still mapped as function_edges_total)
+    edge_coverage_pct: Optional[float] = None
+    function_edges_total: int = 0
+    function_edges_exercised: int = 0
     mutation_kill_rate: Optional[float] = None
     weak_tests: int = 0
     # real-service integration tests written by the integrate apply path
