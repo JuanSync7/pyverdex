@@ -30,6 +30,7 @@ from ..config import Config
 from ..models import AuditGapReport, CoverageGapRecord, CoverageState, ModuleCoverage
 from ..state import EngineState
 from ..tools import adapters
+from . import _edges
 
 
 def build_audit_graph(config: Config):
@@ -93,6 +94,19 @@ def build_audit_graph(config: Config):
             out["edge_report"] = edges.data
             out["log"].append(
                 f"audit/snapshot: {len(edges.data.get('edges', []))} cross-package edges")
+
+        # function->function call-edge coverage (call-site-covered numerator)
+        if config.audit.edge_coverage and source.exists():
+            ec = _edges.edge_coverage(root, source)
+            out["edge_coverage"] = ec
+            if ec.get("pct") is not None:
+                out["log"].append(
+                    f"audit/snapshot: function-edge coverage {ec['pct']}% "
+                    f"({ec['exercised']}/{ec['total']} internal call edges exercised)")
+            else:
+                out["log"].append(
+                    f"audit/snapshot: {ec['total']} internal call edges mapped "
+                    "(no coverage data for numerator)")
 
         bm = adapters.run_branch_map(source)
         if bm.ok and bm.data is not None:

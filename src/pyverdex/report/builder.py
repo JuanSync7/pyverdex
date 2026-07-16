@@ -164,11 +164,42 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         dims.append(DimensionRollup(name="line", status=DimensionStatus.not_run,
                                     headline="no .coverage data (target had no runnable tests?)"))
 
+    # edge dimension: lead with function->function coverage %, keep the vendored
+    # cross-package module map as supporting detail.
+    fe = state.get("edge_coverage") or {}
+    fe_total = fe.get("total")
+    fe_exercised = fe.get("exercised")
+    fe_pct = fe.get("pct")
+    if fe_total:
+        head = (f"{fe_pct}% function→function edge coverage "
+                f"({fe_exercised}/{fe_total} internal call edges exercised)"
+                if fe_pct is not None
+                else f"{fe_total} internal call edges mapped (no coverage numerator)")
+        edge_status = DimensionStatus.passed
+    elif edges:
+        head = f"{len(edges)} cross-package call edges mapped"
+        edge_status = DimensionStatus.passed
+    else:
+        head = "no call edges mapped"
+        edge_status = DimensionStatus.not_run
     dims.append(DimensionRollup(
         name="edge (function-to-function)",
-        status=DimensionStatus.passed if edges else DimensionStatus.not_run,
-        headline=f"{len(edges)} cross-package call edges mapped",
-        detail={"edges": len(edges), "new_edges": len(edges_data.get("new_edges", []))},
+        status=edge_status,
+        headline=head,
+        detail={
+            "function_edges_total": fe_total or 0,
+            "function_edges_exercised": fe_exercised,
+            "edge_coverage_pct": fe_pct,
+            "uncovered_total": fe.get("uncovered_total", 0),
+            # a short "what to test next" worklist of unexercised edges
+            "uncovered_sample": [
+                f"{e['caller_module']}.{e['caller_function']} → "
+                f"{e['callee_module']}.{e['callee_function']}"
+                for e in fe.get("uncovered", [])[:10]
+            ],
+            "cross_package_edges": len(edges),
+            "new_cross_package_edges": len(edges_data.get("new_edges", [])),
+        },
     ))
     branch_mapped = len(branch.get("functions", []))
     dims.append(DimensionRollup(
@@ -282,6 +313,9 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         executable_lines=executable_lines,
         overall_line_coverage_pct=overall_line,
         cross_package_edges=len(edges),
+        edge_coverage_pct=fe_pct,
+        function_edges_total=fe_total or 0,
+        function_edges_exercised=fe_exercised,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,
         tests_by_level=tests_by_level,

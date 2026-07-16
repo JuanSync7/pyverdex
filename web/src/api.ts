@@ -45,11 +45,26 @@ export interface Report {
   executable_lines: number | null;
   overall_line_coverage_pct: number | null;
   cross_package_edges: number;
+  // function->function call-edge coverage (call-site-covered); null with no numerator
+  edge_coverage_pct: number | null;
+  function_edges_total: number;
+  function_edges_exercised: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
   dimensions: Dimension[];
   functions: FunctionCoverage[];
   edges: EdgeRecord[];
+}
+
+/** Verdict-row edge label: the function->function coverage ratio when we have
+ * one, map-only when there's no numerator, else the legacy cross-package count. */
+export function edgeLabel(r: Report): string {
+  if (r.function_edges_total > 0) {
+    return r.edge_coverage_pct === null
+      ? `${r.function_edges_total} edges mapped`
+      : `edges ${r.edge_coverage_pct}% (${r.function_edges_exercised}/${r.function_edges_total})`;
+  }
+  return `${r.cross_package_edges} edges`;
 }
 
 // Static-demo build (GitHub Pages): no backend, render a bundled sample report.

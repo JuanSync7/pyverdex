@@ -124,10 +124,18 @@
     {
       "name": "edge (function-to-function)",
       "status": "pass",
-      "headline": "1 cross-package call edges mapped",
+      "headline": "66.67% function→function edge coverage (4/6 internal call edges exercised)",
       "detail": {
-        "edges": 1,
-        "new_edges": 0
+        "function_edges_total": 6,
+        "function_edges_exercised": 4,
+        "edge_coverage_pct": 66.67,
+        "uncovered_total": 2,
+        "uncovered_sample": [
+          "shop.api.handle_checkout → shop.inventory.reserve",
+          "shop.api.handle_checkout → shop.pricing.final_price"
+        ],
+        "cross_package_edges": 1,
+        "new_cross_package_edges": 0
       }
     },
     {
@@ -164,6 +172,9 @@
   "executable_lines": 180,
   "overall_line_coverage_pct": 72.78,
   "cross_package_edges": 1,
+  "edge_coverage_pct": 66.67,
+  "function_edges_total": 6,
+  "function_edges_exercised": 4,
   "mutation_kill_rate": null,
   "weak_tests": 0,
   "overall_status": "fail"
