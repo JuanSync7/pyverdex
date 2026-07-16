@@ -315,7 +315,7 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         cross_package_edges=len(edges),
         edge_coverage_pct=fe_pct,
         function_edges_total=fe_total or 0,
-        function_edges_exercised=fe_exercised or 0,
+        function_edges_exercised=fe_exercised,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,
         tests_by_level=tests_by_level,

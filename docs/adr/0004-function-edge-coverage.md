@@ -39,10 +39,14 @@ numerator in `src/pyverdex/skills/_edges.py`:
   recorded only when the callee resolves to a top-level function **defined in the
   source tree**, via one of: a bare call to a same-module function, a
   from-imported function (`from util import calc; calc()`), or a call through an
-  imported module alias (`import util as u; u.calc()`). `__init__.py` collapses to
-  its package name so `from pkg import boot` resolves. External, dynamic, and
-  method (`self.x()`, `obj.m()`) calls do **not** resolve to an internal function
-  and are excluded — we don't count what we can't measure.
+  imported module alias (`import util as u; u.calc()` / `import pkg.sub; pkg.f()`).
+  Import binding follows Python semantics (`import a.b` binds `a`), relative
+  imports resolve against the caller's package (with the `__init__`-collapse
+  off-by-one handled so package re-exports resolve), and a name that is itself a
+  source module (`from pkg import submod`) is never mistaken for a same-named
+  function. External, dynamic, and method (`self.x()`, `obj.m()`) calls do **not**
+  resolve to an internal function and are excluded — we don't count what we can't
+  measure. Multi-level attribute chains (`a.b.c.f()`) are left unresolved.
 - **Numerator — call-site-covered.** An edge is *exercised* iff any of its
   call-site lines executed, read from the existing coverage.py `.coverage` data
   (`_executed_lines_by_module`). No runtime call tracing is introduced. Known,

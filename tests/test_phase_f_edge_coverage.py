@@ -65,6 +65,51 @@ def test_from_import_of_package_function_via_init(tmp_path):
     assert ("app", "run", "pkg", "boot") in _edge_keys(build_function_edges(root))
 
 
+def test_dotted_import_binds_top_level_package(tmp_path):
+    # `import pkg.sub` binds `pkg`; `pkg.boot()` calls the package-level function
+    root = _src(tmp_path, {
+        "pkg.__init__": "def boot():\n    return 1\n",
+        "pkg.sub": "x = 1\n",
+        "app": "import pkg.sub\n\ndef run():\n    return pkg.boot()\n",
+    })
+    assert ("app", "run", "pkg", "boot") in _edge_keys(build_function_edges(root))
+
+
+def test_submodule_import_does_not_collide_with_same_named_function(tmp_path):
+    # `from pkg import sub` where pkg ALSO defines a top-level function `sub`:
+    # a `sub()` call is the submodule reference, NOT the function — no false edge
+    root = _src(tmp_path, {
+        "pkg.__init__": "def sub():\n    return 1\n",
+        "pkg.sub": "def go():\n    return 2\n",
+        "app": "from pkg import sub\n\ndef run():\n    sub()\n    return sub.go()\n",
+    })
+    keys = _edge_keys(build_function_edges(root))
+    # the bare sub() call would falsely resolve to pkg.sub (the __init__ function);
+    # the known-modules guard prevents that phantom edge
+    assert ("app", "run", "pkg", "sub") not in keys
+    # while the genuine submodule attribute call sub.go() still resolves
+    assert ("app", "run", "pkg.sub", "go") in keys
+
+
+def test_relative_import_reexport_in_package_init(tmp_path):
+    # `from .impl import work` inside pkg/__init__.py must resolve to pkg.impl.work
+    # (level=1 from an __init__ means the package itself, not its parent)
+    root = _src(tmp_path, {
+        "pkg.impl": "def work():\n    return 1\n",
+        "pkg.__init__": "from .impl import work\n\ndef boot():\n    return work()\n",
+    })
+    assert ("pkg", "boot", "pkg.impl", "work") in _edge_keys(build_function_edges(root))
+
+
+def test_relative_import_from_non_init_module(tmp_path):
+    # `from . import helper` inside pkg/mod.py resolves to pkg.helper (parent pkg)
+    root = _src(tmp_path, {
+        "pkg.helper": "def helper():\n    return 1\n",
+        "pkg.mod": "from . import helper\n\ndef run():\n    return helper.helper()\n",
+    })
+    assert ("pkg.mod", "run", "pkg.helper", "helper") in _edge_keys(build_function_edges(root))
+
+
 def test_qualified_caller_for_method(tmp_path):
     root = _src(tmp_path, {
         "m": "def helper():\n    return 1\n\nclass C:\n    def method(self):\n        return helper()\n",

@@ -303,7 +303,9 @@ class UnifiedCoverageReport(BaseModel):
     # there is no .coverage numerator (edges still mapped as function_edges_total)
     edge_coverage_pct: Optional[float] = None
     function_edges_total: int = 0
-    function_edges_exercised: int = 0
+    # None (not 0) when there is no .coverage numerator — distinguishes "no data"
+    # from "zero edges exercised"
+    function_edges_exercised: Optional[int] = None
     mutation_kill_rate: Optional[float] = None
     weak_tests: int = 0
     # real-service integration tests written by the integrate apply path

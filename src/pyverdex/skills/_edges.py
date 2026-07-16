@@ -40,19 +40,31 @@ def _module_name(path: Path, source_root: Path) -> str:
     return ".".join(parts)
 
 
-def _build_import_map(tree: ast.Module, caller_module: str) -> dict[str, str]:
-    """{local_name: dotted_target} for every import (absolute + relative)."""
+def _build_import_map(tree: ast.Module, caller_module: str,
+                      is_init: bool = False) -> dict[str, str]:
+    """{local_name: dotted_target} for every import (absolute + relative).
+
+    Follows Python binding semantics: ``import a.b.c`` binds the top-level name
+    ``a`` (to package ``a``), while ``import a.b.c as x`` binds ``x`` to
+    ``a.b.c``. Relative imports resolve against the caller's package; when the
+    caller is a package ``__init__`` (already collapsed to the package name),
+    ``level=1`` means *the package itself*, so one fewer component is stripped.
+    """
     mapping: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                local = alias.asname or alias.name.split(".")[0]
-                mapping[local] = alias.name
+                if alias.asname:
+                    mapping[alias.asname] = alias.name
+                else:  # `import a.b.c` binds `a`, not `a.b.c`
+                    top = alias.name.split(".")[0]
+                    mapping[top] = top
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level and node.level > 0:  # relative: resolve vs caller pkg
                 parts = caller_module.split(".")
-                base_parts = parts[: len(parts) - node.level]
+                strip = node.level - (1 if is_init else 0)
+                base_parts = parts[: max(0, len(parts) - strip)]
                 base = ".".join(base_parts) + ("." + base if base else "")
             for alias in node.names:
                 local = alias.asname or alias.name
@@ -64,10 +76,11 @@ class _CallVisitor(ast.NodeVisitor):
     """Collect internal function->function edges, keyed by call site line."""
 
     def __init__(self, caller_module: str, import_map: dict[str, str],
-                 known: set[tuple[str, str]]) -> None:
+                 known: set[tuple[str, str]], known_modules: set[str]) -> None:
         self.caller_module = caller_module
         self.import_map = import_map
         self.known = known  # {(module, top_level_function)}
+        self.known_modules = known_modules  # dotted names of source modules
         self.stack: list[str] = []  # enclosing class/function qualname parts
         self.edges: dict[tuple[str, str, str, str], set[int]] = {}
 
@@ -91,7 +104,9 @@ class _CallVisitor(ast.NodeVisitor):
         # bare name: from-imported function, or a function in this same module
         if isinstance(func, ast.Name):
             target = self.import_map.get(func.id)
-            if target:
+            # skip when the name is itself a source module (`from a import submod`)
+            # so a `submod()` call can't collide with a same-named function in `a`
+            if target and target not in self.known_modules:
                 mod, _, fn = target.rpartition(".")
                 if (mod, fn) in self.known:
                     return (mod, fn)
@@ -129,14 +144,15 @@ def build_function_edges(source_root: Path) -> list[dict]:
         except (SyntaxError, OSError, ValueError):
             continue
         mod = _module_name(py, source_root)
-        parsed[mod] = (tree, _build_import_map(tree, mod))
+        parsed[mod] = (tree, _build_import_map(tree, mod, py.name == "__init__.py"))
         for n in tree.body:
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 known.add((mod, n.name))
 
+    known_modules = set(parsed)
     edges: list[dict] = []
     for mod, (tree, imap) in parsed.items():
-        v = _CallVisitor(mod, imap, known)
+        v = _CallVisitor(mod, imap, known, known_modules)
         v.visit(tree)
         for (cm, cf, em, ef), lines in v.edges.items():
             edges.append({

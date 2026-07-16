@@ -48,7 +48,7 @@ export interface Report {
   // function->function call-edge coverage (call-site-covered); null with no numerator
   edge_coverage_pct: number | null;
   function_edges_total: number;
-  function_edges_exercised: number;
+  function_edges_exercised: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
   dimensions: Dimension[];

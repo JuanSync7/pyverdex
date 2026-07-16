@@ -211,7 +211,9 @@ export function App() {
             </span>
             <span>
               {report.function_edges_total > 0
-                ? `edges ${report.edge_coverage_pct === null ? "—" : pct(report.edge_coverage_pct)} (${report.function_edges_exercised}/${report.function_edges_total})`
+                ? report.edge_coverage_pct === null
+                  ? `${report.function_edges_total} edges mapped`
+                  : `edges ${pct(report.edge_coverage_pct)} (${report.function_edges_exercised}/${report.function_edges_total})`
                 : `${report.cross_package_edges} edges`}
             </span>
             <span>mutation {report.mutation_kill_rate === null ? "—" : `${Math.round(report.mutation_kill_rate * 100)}%`}</span>
