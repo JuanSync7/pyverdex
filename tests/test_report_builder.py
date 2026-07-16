@@ -246,6 +246,23 @@ def test_system_boundary_dimension_counts_covered_and_worklists_rest():
     assert dim.detail["untested_sample"] == ["m.db.save (env_reader)"]
 
 
+def test_system_dimension_dedupes_repeated_boundary():
+    """The same function listed twice (defensive: classifier emits one entry per
+    function) must count once, so the list denominator can't diverge from the
+    set-based numerator."""
+    st = _state()
+    st["boundary_report"] = {"boundaries": [
+        {"module": "m.api", "function_name": "handler", "boundary_type": "http_handler"},
+        {"module": "m.api", "function_name": "handler", "boundary_type": "env_reader"},
+    ]}
+    st["generated"] = [
+        {"module": "m.api", "boundary_fn": "handler", "test_path": "/t/a.py", "gate": "pass"}]
+    r = build_unified_report(st, Config())
+    assert r.boundaries_total == 1  # deduped on (module, function_name)
+    assert r.boundaries_covered == 1
+    assert r.boundary_coverage_pct == 100.0
+
+
 def test_system_dimension_all_covered_passes():
     st = _state()
     st["boundary_report"] = {"boundaries": [

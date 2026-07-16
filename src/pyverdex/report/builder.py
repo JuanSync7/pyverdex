@@ -260,8 +260,18 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
             for r in generated
             if r.get("boundary_fn") and r.get("test_path") and r.get("gate") == "pass"
         }
-        detected = [(b.get("module"), b.get("function_name"),
-                     b.get("boundary_type", "?")) for b in bnd_list]
+        # dedupe on (module, function_name): the classifier emits one entry per
+        # function (strict priority), but keep the denominator robust to any
+        # repeat so it can't diverge from the set-based numerator below.
+        detected: list[tuple] = []
+        seen_bnd: set[tuple] = set()
+        for b in bnd_list:
+            key = (b.get("module"), b.get("function_name"))
+            if key in seen_bnd:
+                continue
+            seen_bnd.add(key)
+            detected.append((b.get("module"), b.get("function_name"),
+                             b.get("boundary_type", "?")))
         boundaries_total = len(detected)
         covered = [d for d in detected if (d[0], d[1]) in covered_keys]
         boundaries_covered = len(covered)
