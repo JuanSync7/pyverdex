@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { edgeLabel, Report } from "./api";
+import { edgeLabel, Report, systemLabel } from "./api";
 
 const base: Report = {
   overall_status: "pass",
@@ -15,6 +15,10 @@ const base: Report = {
   edge_coverage_pct: null,
   function_edges_total: 0,
   function_edges_exercised: null,
+  boundary_coverage_pct: null,
+  boundaries_total: 0,
+  boundaries_covered: 0,
+  log_path_coverage_pct: null,
   mutation_kill_rate: null,
   weak_tests: 0,
   dimensions: [],
@@ -37,5 +41,17 @@ describe("edgeLabel", () => {
 
   it("falls back to the cross-package count when no function edges are mapped", () => {
     expect(edgeLabel(base)).toBe("3 edges");
+  });
+});
+
+describe("systemLabel", () => {
+  it("returns null when no external boundaries were detected", () => {
+    expect(systemLabel(base)).toBeNull();
+  });
+
+  it("shows the boundary coverage ratio when boundaries exist", () => {
+    expect(
+      systemLabel({ ...base, boundaries_total: 4, boundaries_covered: 1, boundary_coverage_pct: 25 }),
+    ).toBe("system 25% (1/4)");
   });
 });

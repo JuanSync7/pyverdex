@@ -221,3 +221,68 @@ def test_edge_dimension_without_coverage_numerator():
     assert r.function_edges_total == 2
     edge = next(d for d in r.dimensions if d.name.startswith("edge"))
     assert "mapped" in edge.headline and "no coverage numerator" in edge.headline
+
+
+# --- Phase G: system (boundary) coverage + log-path -------------------------
+
+def test_system_boundary_dimension_counts_covered_and_worklists_rest():
+    """A boundary is covered iff a PASSING integration test exists for it; the
+    rest become the untested-boundary worklist."""
+    st = _state()
+    st["boundary_report"] = {"boundaries": [
+        {"module": "m.api", "function_name": "handler", "boundary_type": "http_handler"},
+        {"module": "m.db", "function_name": "save", "boundary_type": "env_reader"},
+    ]}
+    st["generated"] = [
+        {"module": "m.api", "boundary_fn": "handler", "test_path": "/t/a.py", "gate": "pass"},
+        {"module": "m.db", "boundary_fn": "save", "test_path": "/t/b.py", "gate": "red"},  # fails
+    ]
+    r = build_unified_report(st, Config())
+    assert r.boundaries_total == 2
+    assert r.boundaries_covered == 1  # only the passing one
+    assert r.boundary_coverage_pct == 50.0
+    dim = next(d for d in r.dimensions if d.name.startswith("system"))
+    assert dim.status is DimensionStatus.warn  # not all covered => advisory warn
+    assert dim.detail["untested_sample"] == ["m.db.save (env_reader)"]
+
+
+def test_system_dimension_all_covered_passes():
+    st = _state()
+    st["boundary_report"] = {"boundaries": [
+        {"module": "m.api", "function_name": "handler", "boundary_type": "http_handler"}]}
+    st["generated"] = [
+        {"module": "m.api", "boundary_fn": "handler", "test_path": "/t/a.py", "gate": "pass"}]
+    r = build_unified_report(st, Config())
+    assert r.boundary_coverage_pct == 100.0
+    dim = next(d for d in r.dimensions if d.name.startswith("system"))
+    assert dim.status is DimensionStatus.passed
+
+
+def test_no_system_dimension_without_boundaries():
+    r = build_unified_report(_state(), Config())  # no boundary_report in state
+    assert r.boundaries_total == 0
+    assert r.boundary_coverage_pct is None
+    assert not any(d.name.startswith("system") for d in r.dimensions)
+
+
+def test_log_path_dimension_surfaced_as_advisory():
+    st = _state()
+    st["log_contract_report"] = {
+        "log_path_coverage": 0.6, "total_branches": 10, "branches_with_log": 6,
+        "violations": [{"violation_type": "missing_log_in_except"}]}
+    r = build_unified_report(st, Config())
+    assert r.log_path_coverage_pct == 60.0
+    dim = next(d for d in r.dimensions if d.name == "log-path")
+    assert "60.0% log-path coverage" in dim.headline
+    assert "1 violation" in dim.headline
+    assert dim.status is DimensionStatus.warn  # violations are advisory, not a fail
+
+
+def test_log_path_clean_passes():
+    st = _state()
+    st["log_contract_report"] = {"log_path_coverage": 1.0, "total_branches": 4,
+                                 "branches_with_log": 4, "violations": []}
+    r = build_unified_report(st, Config())
+    dim = next(d for d in r.dimensions if d.name == "log-path")
+    assert dim.status is DimensionStatus.passed
+    assert r.log_path_coverage_pct == 100.0

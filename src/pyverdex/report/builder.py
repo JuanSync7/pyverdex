@@ -246,6 +246,65 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                       + (f"; {problems}" if problems else "")),
             detail={"written": int_written, "passed": int_passed, "by_gate": by_gate},
         ))
+
+    # --- system coverage: detected boundaries with a passing integration test --
+    boundary = state.get("boundary_report") or {}
+    bnd_list = boundary.get("boundaries", [])
+    boundary_pct: float | None = None
+    boundaries_total = 0
+    boundaries_covered = 0
+    if bnd_list:
+        # (module, fn) of every boundary the engine has a PASSING integration test for
+        covered_keys = {
+            (r.get("module"), r.get("boundary_fn"))
+            for r in generated
+            if r.get("boundary_fn") and r.get("test_path") and r.get("gate") == "pass"
+        }
+        detected = [(b.get("module"), b.get("function_name"),
+                     b.get("boundary_type", "?")) for b in bnd_list]
+        boundaries_total = len(detected)
+        covered = [d for d in detected if (d[0], d[1]) in covered_keys]
+        boundaries_covered = len(covered)
+        boundary_pct = round(boundaries_covered / boundaries_total * 100.0, 2)
+        untested = [d for d in detected if (d[0], d[1]) not in covered_keys]
+        dims.append(DimensionRollup(
+            name="system (boundary coverage)",
+            # warn (not fail) when boundaries are untested: measure-only runs have
+            # written no integration tests yet, and that shouldn't red the gate.
+            status=(DimensionStatus.passed if boundaries_covered == boundaries_total
+                    else DimensionStatus.warn),
+            headline=(f"{boundary_pct}% of external boundaries have a passing "
+                      f"integration test ({boundaries_covered}/{boundaries_total})"),
+            detail={
+                "boundaries_total": boundaries_total,
+                "boundaries_covered": boundaries_covered,
+                "boundary_coverage_pct": boundary_pct,
+                # the "what to test next" worklist of untested boundaries
+                "untested_sample": [f"{m}.{fn} ({bt})" for m, fn, bt in untested[:10]],
+            },
+        ))
+
+    # --- log-path coverage (collected by audit, previously never surfaced) -----
+    logc = state.get("log_contract_report") or {}
+    log_path_pct: float | None = None
+    if logc:
+        lp = logc.get("log_path_coverage")
+        log_path_pct = round(lp * 100.0, 2) if isinstance(lp, (int, float)) else None
+        violations = logc.get("violations", [])
+        dims.append(DimensionRollup(
+            name="log-path",
+            # advisory: violations warn (don't fail the overall gate)
+            status=DimensionStatus.warn if violations else DimensionStatus.passed,
+            headline=(f"{log_path_pct}% log-path coverage "
+                      f"({logc.get('branches_with_log')}/{logc.get('total_branches')} "
+                      "branches log)"
+                      + (f"; {len(violations)} violation(s)" if violations else "")),
+            detail={"log_path_coverage_pct": log_path_pct,
+                    "total_branches": logc.get("total_branches"),
+                    "branches_with_log": logc.get("branches_with_log"),
+                    "violations": len(violations)},
+        ))
+
     # --- smoke dimension (import sweep from audit) -----------------------
     smoke = state.get("smoke_report") or {}
     smoke_total = smoke.get("total")
@@ -316,6 +375,10 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         edge_coverage_pct=fe_pct,
         function_edges_total=fe_total or 0,
         function_edges_exercised=fe_exercised,
+        boundary_coverage_pct=boundary_pct,
+        boundaries_total=boundaries_total,
+        boundaries_covered=boundaries_covered,
+        log_path_coverage_pct=log_path_pct,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,
         tests_by_level=tests_by_level,
