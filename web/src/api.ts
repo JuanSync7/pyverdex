@@ -49,6 +49,11 @@ export interface Report {
   edge_coverage_pct: number | null;
   function_edges_total: number;
   function_edges_exercised: number | null;
+  // system coverage: detected boundaries with a passing integration test
+  boundary_coverage_pct: number | null;
+  boundaries_total: number;
+  boundaries_covered: number;
+  log_path_coverage_pct: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
   dimensions: Dimension[];
@@ -65,6 +70,14 @@ export function edgeLabel(r: Report): string {
       : `edges ${r.edge_coverage_pct}% (${r.function_edges_exercised}/${r.function_edges_total})`;
   }
   return `${r.cross_package_edges} edges`;
+}
+
+/** Verdict-row system label: boundaries with a passing integration test.
+ * Returns null when no external boundaries were detected (nothing to show). */
+export function systemLabel(r: Report): string | null {
+  if (r.boundaries_total <= 0) return null;
+  const p = r.boundary_coverage_pct === null ? "—" : `${r.boundary_coverage_pct}%`;
+  return `system ${p} (${r.boundaries_covered}/${r.boundaries_total})`;
 }
 
 // Static-demo build (GitHub Pages): no backend, render a bundled sample report.

@@ -311,6 +311,14 @@ class UnifiedCoverageReport(BaseModel):
     # real-service integration tests written by the integrate apply path
     integration_tests_written: int = 0
     integration_tests_passed: int = 0
+    # system coverage: detected external boundaries that have a passing integration
+    # test (pct None when no boundaries were detected / boundary stage not run)
+    boundary_coverage_pct: Optional[float] = None
+    boundaries_total: int = 0
+    boundaries_covered: int = 0
+    # log-path coverage (fraction of branch nodes that emit a log) — surfaced from
+    # the log_contract_validator report; None when that report is absent
+    log_path_coverage_pct: Optional[float] = None
     # count of authored/proposed tests by TestLevel value ("unit"/"integration"/…)
     tests_by_level: dict[str, int] = Field(default_factory=dict)
     # smoke import-sweep: source modules that import cleanly / total (None if not run)
