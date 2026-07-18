@@ -311,11 +311,15 @@ class UnifiedCoverageReport(BaseModel):
     # real-service integration tests written by the integrate apply path
     integration_tests_written: int = 0
     integration_tests_passed: int = 0
-    # system coverage: detected external boundaries that have a passing integration
-    # test (pct None when no boundaries were detected / boundary stage not run)
+    # system coverage: detected external boundaries exercised by an asserting
+    # test — ANY test via per-test coverage contexts, engine-written tests via
+    # the integrate gate (pct None when no boundaries were detected / boundary
+    # stage not run). "executed_only" = some test ran the boundary's lines but
+    # none made a meaningful assertion (execution is not verification).
     boundary_coverage_pct: Optional[float] = None
     boundaries_total: int = 0
     boundaries_covered: int = 0
+    boundaries_executed_only: int = 0
     # log-path coverage (fraction of branch nodes that emit a log) — surfaced from
     # the log_contract_validator report; None when that report is absent
     log_path_coverage_pct: Optional[float] = None

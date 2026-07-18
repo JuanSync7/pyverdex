@@ -30,7 +30,7 @@ from ..config import Config
 from ..models import AuditGapReport, CoverageGapRecord, CoverageState, ModuleCoverage
 from ..state import EngineState
 from ..tools import adapters
-from . import _edges
+from . import _contexts, _edges
 
 
 def build_audit_graph(config: Config):
@@ -44,9 +44,11 @@ def build_audit_graph(config: Config):
             return {"log": [f"audit/collect: no test root at {test}; "
                             "line coverage will be unavailable"]}
         res = adapters.collect_coverage(
-            root, source, test, runner=adapters.get_runner(config.runner))
+            root, source, test, runner=adapters.get_runner(config.runner),
+            dynamic_contexts=config.audit.test_contexts)
         msg = (f"audit/collect: coverage run rc={res.returncode}"
-               + (" (timed out)" if res.timed_out else ""))
+               + (" (timed out)" if res.timed_out else "")
+               + (" [per-test contexts]" if config.audit.test_contexts else ""))
         return {"log": [msg]}
 
     def snapshot(state: EngineState) -> dict:
@@ -115,6 +117,23 @@ def build_audit_graph(config: Config):
         bd = adapters.run_boundary(source)
         if bd.ok and bd.data is not None:
             out["boundary_report"] = bd.data
+
+        # per-test boundary attribution from dynamic contexts (Phase H): which
+        # tests — hand-written OR engine-written — actually execute each boundary
+        if config.audit.test_contexts and source.exists():
+            ta = _contexts.test_attribution(
+                root, source, (out.get("boundary_report") or {}).get("boundaries"))
+            out["test_attribution"] = ta
+            if ta["have_contexts"]:
+                executed = sum(1 for b in ta["boundaries"] if b["covering_tests"])
+                out["log"].append(
+                    f"audit/snapshot: test attribution — {executed}/"
+                    f"{len(ta['boundaries'])} boundaries executed by some test "
+                    f"({ta['tests_seen']} tests seen)")
+            else:
+                out["log"].append(
+                    "audit/snapshot: no per-test contexts in .coverage "
+                    "(attribution unavailable)")
 
         if test.exists():
             aq = adapters.run_assertion_quality(

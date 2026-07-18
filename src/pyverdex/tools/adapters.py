@@ -13,9 +13,13 @@ Exit-code convention inherited from the tools: ``0`` = pass/clean,
 
 from __future__ import annotations
 
+import configparser
 import json
+import os
 import subprocess
 import sys
+import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
@@ -106,9 +110,11 @@ class Runner(Protocol):
     name: str
 
     def collect_coverage(self, project_root: Path, source_root: Path,
-                         test_root: Path, *, timeout: float = 1800.0) -> "ToolResult":
+                         test_root: Path, *, timeout: float = 1800.0,
+                         dynamic_contexts: bool = False) -> "ToolResult":
         """Run the suite under coverage to leave a ``.coverage`` file in
-        ``project_root``."""
+        ``project_root``. With ``dynamic_contexts`` the run also records
+        per-test line attribution (coverage.py dynamic contexts)."""
         ...
 
     def green_run(self, root: Path, test_path: Path, *,
@@ -117,24 +123,109 @@ class Runner(Protocol):
         ...
 
 
+def _target_run_options(project_root: Path) -> dict[str, str]:
+    """The target project's own ``[run]`` coverage options, first-file-wins in
+    coverage.py's precedence order (.coveragerc, setup.cfg, tox.ini,
+    pyproject.toml), normalised to rcfile string form.
+
+    Needed because ``coverage run --rcfile`` REPLACES config discovery entirely
+    (verified in the Phase H spike: a target's pyproject ``omit`` was ignored
+    under ``--rcfile``), so enabling dynamic contexts must re-carry the
+    target's collection options (plugins, concurrency, relative_files, omit,
+    include, ...) instead of silently dropping them.
+    """
+    for name, section in ((".coveragerc", "run"),
+                          ("setup.cfg", "coverage:run"),
+                          ("tox.ini", "coverage:run")):
+        path = project_root / name
+        if not path.exists():
+            continue
+        # Raw parser: coverage options are patterns, not interpolation templates
+        # — a literal '%' in an omit glob must survive, not raise.
+        cp = configparser.RawConfigParser()
+        try:
+            cp.read(path, encoding="utf-8")
+        except configparser.Error:
+            continue
+        if name == ".coveragerc":  # used whenever present, even without [run]
+            return dict(cp.items(section)) if cp.has_section(section) else {}
+        if any(s.startswith("coverage:") for s in cp.sections()):
+            return dict(cp.items(section)) if cp.has_section(section) else {}
+    pyproject = project_root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            doc = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        except (tomllib.TOMLDecodeError, OSError):
+            return {}
+        coverage_cfg = doc.get("tool", {}).get("coverage")
+        if isinstance(coverage_cfg, dict):
+            run = coverage_cfg.get("run") or {}
+            return {k: _toml_to_ini(v) for k, v in run.items()}
+    return {}
+
+
+def _toml_to_ini(value: Any) -> str:
+    """One pyproject value in .coveragerc (ini) string form."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "\n" + "\n".join(str(v) for v in value)
+    return str(value)
+
+
+def _contexts_rcfile(project_root: Path) -> Path:
+    """Write a temp rcfile (in ``project_root``) enabling per-test dynamic
+    contexts on top of the target's own ``[run]`` options. Caller unlinks.
+
+    Only the ``[run]`` section is merged — plugin option sections referenced
+    from ``plugins`` are a documented v1 limitation (ADR 0006).
+    """
+    options = _target_run_options(project_root)
+    options["dynamic_context"] = "test_function"  # ours wins over any target value
+    lines = ["[run]"]
+    for key, value in options.items():
+        lines.append(f"{key} = " + value.replace("\n", "\n    "))
+    fd, name = tempfile.mkstemp(prefix=".pyverdex-covrc-", dir=str(project_root))
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return Path(name)
+
+
 class PytestRunner:
     """Default Runner: coverage.py + pytest (the historical hardcoded path)."""
 
     name = "pytest"
 
     def collect_coverage(self, project_root: Path, source_root: Path,
-                         test_root: Path, *, timeout: float = 1800.0) -> "ToolResult":
+                         test_root: Path, *, timeout: float = 1800.0,
+                         dynamic_contexts: bool = False) -> "ToolResult":
         cmd = [
             sys.executable, "-m", "coverage", "run",
             "--branch",  # record arc data so coverage_totals() can report branch %
             f"--source={source_root}", "-m", "pytest", str(test_root), "-q",
         ]
+        rcfile: Optional[Path] = None
+        if dynamic_contexts:
+            # No CLI flag exists for dynamic_context (only static --context), so
+            # inject via a merged rcfile; on any I/O error degrade to a plain
+            # run — coverage without contexts beats no coverage at all.
+            try:
+                rcfile = _contexts_rcfile(project_root)
+                cmd.insert(4, f"--rcfile={rcfile}")
+            except OSError:
+                rcfile = None
         try:
             proc = subprocess.run(cmd, cwd=str(project_root), capture_output=True,
                                   text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             return ToolResult(tool="coverage-run", returncode=124, timed_out=True,
                               stderr=f"coverage run timed out after {timeout}s")
+        finally:
+            if rcfile is not None:
+                try:
+                    rcfile.unlink()
+                except OSError:
+                    pass
         # pytest rc: 0 pass, 1 tests failed, 5 no tests collected — all leave a
         # usable .coverage file, so treat anything but a hard error as runnable.
         return ToolResult(tool="coverage-run", returncode=proc.returncode,
@@ -207,15 +298,18 @@ def collect_coverage(
     *,
     timeout: float = 1800.0,
     runner: Optional[Runner] = None,
+    dynamic_contexts: bool = False,
 ) -> ToolResult:
     """Run the target test suite under coverage.py to produce a ``.coverage``
     file in ``project_root`` (consumed by :func:`run_coverage_gaps`).
 
     Delegates to the selected :class:`Runner` (pytest by default), which is the
-    seam for alternate runners.
+    seam for alternate runners. ``dynamic_contexts`` additionally records
+    which test executed each line (read back by ``skills._contexts``).
     """
     return (runner or get_runner()).collect_coverage(
-        project_root, source_root, test_root, timeout=timeout)
+        project_root, source_root, test_root, timeout=timeout,
+        dynamic_contexts=dynamic_contexts)
 
 
 def run_coverage_gaps(

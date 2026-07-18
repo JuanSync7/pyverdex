@@ -85,15 +85,22 @@ def test_audit_populates_boundary_and_log_reports(tmp_path):
 
 def test_audit_boundary_report_flows_into_report_dimension(tmp_path):
     """The audit-produced boundary_report yields a system dimension in the built
-    report (untested here => advisory warn, full boundary list as the worklist)."""
+    report. Since Phase H the numerator counts ALL tests via per-test coverage
+    contexts: the fixture's hand-written asserting test covers the boundary, so
+    this locks the full audit→attribution→builder flow (not just the engine
+    join). The engine-only fallback keeps Phase G semantics and is locked in
+    test_phase_h_contexts.py."""
     cfg = _audit_cfg(_boundary_project(tmp_path))
     out = build_audit_graph(cfg).invoke(_audit_state(cfg))
     report = build_unified_report({**_audit_state(cfg), **out, "generated": []}, cfg)
     assert report.boundaries_total >= 1
-    assert report.boundaries_covered == 0  # no integration tests written
+    # test_handler executes handler() and asserts on its result -> covered
+    assert report.boundaries_covered == report.boundaries_total
     dim = next(d for d in report.dimensions if d.name.startswith("system"))
-    assert dim.status is DimensionStatus.warn
-    assert any("handler" in s for s in dim.detail["untested_sample"])
+    assert dim.status is DimensionStatus.passed
+    assert dim.detail["attribution"] == "contexts"
+    assert dim.detail["engine_covered"] == 0  # no integration tests written
+    assert dim.detail["untested_sample"] == []
 
 
 # --- gap #2: a REAL integrate record marks its boundary covered --------------

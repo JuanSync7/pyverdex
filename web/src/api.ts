@@ -49,10 +49,13 @@ export interface Report {
   edge_coverage_pct: number | null;
   function_edges_total: number;
   function_edges_exercised: number | null;
-  // system coverage: detected boundaries with a passing integration test
+  // system coverage: boundaries exercised by an asserting test (any test, via
+  // per-test coverage contexts; engine-written tests via the integrate gate).
+  // executed_only = ran by some test but nothing meaningful was asserted.
   boundary_coverage_pct: number | null;
   boundaries_total: number;
   boundaries_covered: number;
+  boundaries_executed_only: number;
   log_path_coverage_pct: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
@@ -72,12 +75,14 @@ export function edgeLabel(r: Report): string {
   return `${r.cross_package_edges} edges`;
 }
 
-/** Verdict-row system label: boundaries with a passing integration test.
- * Returns null when no external boundaries were detected (nothing to show). */
+/** Verdict-row system label: boundaries exercised by an asserting test.
+ * Returns null when no external boundaries were detected (nothing to show);
+ * appends the executed-only count (ran, but nothing asserted) when non-zero. */
 export function systemLabel(r: Report): string | null {
   if (r.boundaries_total <= 0) return null;
   const p = r.boundary_coverage_pct === null ? "—" : `${r.boundary_coverage_pct}%`;
-  return `system ${p} (${r.boundaries_covered}/${r.boundaries_total})`;
+  const execOnly = r.boundaries_executed_only > 0 ? `, ${r.boundaries_executed_only} exec-only` : "";
+  return `system ${p} (${r.boundaries_covered}/${r.boundaries_total}${execOnly})`;
 }
 
 // Static-demo build (GitHub Pages): no backend, render a bundled sample report.

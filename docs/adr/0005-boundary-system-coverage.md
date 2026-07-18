@@ -67,5 +67,10 @@ tools, no vendored edits.
   This keeps the dimensions orthogonal and the meaning honest; documented so the
   0% measure-only baseline reads as "no integration tests written yet", not "the
   boundary is unreachable".
+  *Superseded in part by ADR 0006 (Phase H): when per-test dynamic contexts are
+  available, the numerator counts **all** asserting tests — hand-written and
+  engine-written — and the engine-written count survives as the `engine_covered`
+  loop-closure sub-stat. Without contexts the engine-only numerator above still
+  applies (graceful fallback).*
 - Log-path coverage is no longer computed-and-discarded; it appears as an
   advisory dimension without changing pass/fail semantics.

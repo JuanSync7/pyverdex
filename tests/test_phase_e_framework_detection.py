@@ -223,7 +223,8 @@ class _RecordingRunner:
     def __init__(self):
         self.calls: list[str] = []
 
-    def collect_coverage(self, project_root, source_root, test_root, *, timeout=1800.0):
+    def collect_coverage(self, project_root, source_root, test_root, *,
+                         timeout=1800.0, dynamic_contexts=False):
         self.calls.append("collect")
         return ToolResult(tool="coverage-run", returncode=0)
 

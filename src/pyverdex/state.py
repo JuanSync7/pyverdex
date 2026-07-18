@@ -46,6 +46,7 @@ class EngineState(TypedDict, total=False):
     edge_coverage: dict[str, Any]  # function->function call-edge coverage (Phase F)
     branch_map: dict[str, Any]
     boundary_report: dict[str, Any]
+    test_attribution: dict[str, Any]  # per-test boundary attribution via contexts (Phase H)
     assertion_report: dict[str, Any]
     log_contract_report: dict[str, Any]
     smoke_report: dict[str, Any]  # import-sweep health {total, imported, failures}
