@@ -56,6 +56,12 @@ export interface Report {
   boundaries_total: number;
   boundaries_covered: number;
   boundaries_executed_only: number;
+  // realness grading (Phase H2): real_covered = covered by an in-process/real
+  // (or unreplaced-deps) test; mock_only = only covered against a mock/fake.
+  // realness pct null when the classifier or contexts were unavailable.
+  boundaries_real_covered: number;
+  boundaries_mock_only: number;
+  boundary_realness_pct: number | null;
   log_path_coverage_pct: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
@@ -76,12 +82,18 @@ export function edgeLabel(r: Report): string {
 }
 
 /** Verdict-row system label: boundaries exercised by an asserting test.
- * Returns null when no external boundaries were detected (nothing to show);
- * appends the executed-only count (ran, but nothing asserted) when non-zero. */
+ * Returns null when no external boundaries were detected (nothing to show).
+ * With realness grading (Phase H2) the ratio leads with REAL-tested
+ * boundaries and appends mock-only / exec-only counts; without it, the
+ * ungraded covered ratio with the exec-only count. */
 export function systemLabel(r: Report): string | null {
   if (r.boundaries_total <= 0) return null;
-  const p = r.boundary_coverage_pct === null ? "—" : `${r.boundary_coverage_pct}%`;
   const execOnly = r.boundaries_executed_only > 0 ? `, ${r.boundaries_executed_only} exec-only` : "";
+  if (r.boundary_realness_pct !== null) {
+    const mockOnly = r.boundaries_mock_only > 0 ? `, ${r.boundaries_mock_only} mock-only` : "";
+    return `system ${r.boundary_realness_pct}% real (${r.boundaries_real_covered}/${r.boundaries_total}${mockOnly}${execOnly})`;
+  }
+  const p = r.boundary_coverage_pct === null ? "—" : `${r.boundary_coverage_pct}%`;
   return `system ${p} (${r.boundaries_covered}/${r.boundaries_total}${execOnly})`;
 }
 

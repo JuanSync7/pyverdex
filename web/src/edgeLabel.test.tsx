@@ -19,6 +19,9 @@ const base: Report = {
   boundaries_total: 0,
   boundaries_covered: 0,
   boundaries_executed_only: 0,
+  boundaries_real_covered: 0,
+  boundaries_mock_only: 0,
+  boundary_realness_pct: null,
   log_path_coverage_pct: null,
   mutation_kill_rate: null,
   weak_tests: 0,
@@ -66,5 +69,20 @@ describe("systemLabel", () => {
         boundary_coverage_pct: 40,
       }),
     ).toBe("system 40% (2/5, 2 exec-only)");
+  });
+
+  it("leads with the real-tested ratio when realness grading is available", () => {
+    expect(
+      systemLabel({
+        ...base,
+        boundaries_total: 5,
+        boundaries_covered: 3,
+        boundaries_real_covered: 2,
+        boundaries_mock_only: 1,
+        boundaries_executed_only: 1,
+        boundary_coverage_pct: 60,
+        boundary_realness_pct: 40,
+      }),
+    ).toBe("system 40% real (2/5, 1 mock-only, 1 exec-only)");
   });
 });

@@ -184,6 +184,9 @@ class AuditConfig(BaseModel):
     # per-test dynamic contexts on the coverage run (Phase H); on by default
     # because absence degrades gracefully to the engine-only Phase G numerator
     test_contexts: bool = True
+    # mock/fake/in_process/real tiering of tests (Phase H2); grades the system
+    # dimension's "covered" verdicts, absence leaves them ungraded
+    realness: bool = True
 
     @field_validator("import_smoke_timeout")
     @classmethod
