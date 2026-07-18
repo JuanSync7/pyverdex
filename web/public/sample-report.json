@@ -153,12 +153,16 @@
     {
       "name": "system (boundary coverage)",
       "status": "warn",
-      "headline": "0.0% of external boundaries have a passing integration test (0/1)",
+      "headline": "0.0% of external boundaries are exercised by an asserting test (0/1; 1 executed-only)",
       "detail": {
         "boundaries_total": 1,
         "boundaries_covered": 0,
+        "boundaries_executed_only": 1,
         "boundary_coverage_pct": 0.0,
-        "untested_sample": ["shop.api.handle_checkout (http_handler)"]
+        "attribution": "contexts",
+        "engine_covered": 0,
+        "untested_sample": [],
+        "executed_only_sample": ["shop.api.handle_checkout (http_handler)"]
       }
     },
     {
@@ -200,6 +204,7 @@
   "boundary_coverage_pct": 0.0,
   "boundaries_total": 1,
   "boundaries_covered": 0,
+  "boundaries_executed_only": 1,
   "log_path_coverage_pct": 60.0,
   "mutation_kill_rate": null,
   "weak_tests": 0,

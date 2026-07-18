@@ -18,6 +18,7 @@ const base: Report = {
   boundary_coverage_pct: null,
   boundaries_total: 0,
   boundaries_covered: 0,
+  boundaries_executed_only: 0,
   log_path_coverage_pct: null,
   mutation_kill_rate: null,
   weak_tests: 0,
@@ -53,5 +54,17 @@ describe("systemLabel", () => {
     expect(
       systemLabel({ ...base, boundaries_total: 4, boundaries_covered: 1, boundary_coverage_pct: 25 }),
     ).toBe("system 25% (1/4)");
+  });
+
+  it("appends the executed-only count when some boundaries ran unasserted", () => {
+    expect(
+      systemLabel({
+        ...base,
+        boundaries_total: 5,
+        boundaries_covered: 2,
+        boundaries_executed_only: 2,
+        boundary_coverage_pct: 40,
+      }),
+    ).toBe("system 40% (2/5, 2 exec-only)");
   });
 });

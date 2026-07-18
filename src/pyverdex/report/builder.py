@@ -247,22 +247,49 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
             detail={"written": int_written, "passed": int_passed, "by_gate": by_gate},
         ))
 
-    # --- system coverage: detected boundaries with a passing integration test --
+    # --- system coverage: are detected boundaries exercised by tests? ---------
+    # Numerator (Phase H): Σ over ALL tests via per-test coverage contexts
+    # (state["test_attribution"]) joined with assertion quality — a covering
+    # test only lifts a boundary past "executed only" when it makes a
+    # meaningful assertion. Falls back to the Phase G engine-written-only join
+    # when the .coverage DB carries no contexts.
     boundary = state.get("boundary_report") or {}
     bnd_list = boundary.get("boundaries", [])
+    attribution = state.get("test_attribution") or {}
+    have_ctx = bool(attribution.get("have_contexts"))
     boundary_pct: float | None = None
     boundaries_total = 0
     boundaries_covered = 0
+    boundaries_executed_only = 0
     if bnd_list:
         # (module, fn) of every boundary the engine has a PASSING integration test for
-        covered_keys = {
+        engine_keys = {
             (r.get("module"), r.get("boundary_fn"))
             for r in generated
             if r.get("boundary_fn") and r.get("test_path") and r.get("gate") == "pass"
         }
+        # covering tests per boundary from dynamic contexts (hand-written + engine)
+        covering: dict[tuple, list[str]] = {
+            (b.get("module"), b.get("function_name")): b.get("covering_tests", [])
+            for b in attribution.get("boundaries", [])
+        }
+        # tests with a meaningful assertion, keyed to match a context label's
+        # last two segments (test module import name is layout-dependent —
+        # "tests.test_x.test_ok" vs "test_x.test_ok" — so join on stem+fn)
+        asserting = {
+            (Path(s.get("test_file", "")).stem, s.get("test_function"))
+            for s in assertion.get("scores", [])
+            if s.get("has_meaningful_assertion")
+        }
+
+        def _label_key(label: str) -> tuple:
+            parts = label.rsplit(".", 2)
+            return (parts[-2], parts[-1]) if len(parts) >= 2 else ("", label)
+
         # dedupe on (module, function_name): the classifier emits one entry per
         # function (strict priority), but keep the denominator robust to any
-        # repeat so it can't diverge from the set-based numerator below.
+        # repeat so it can't diverge from the set-based numerators below. On a
+        # repeat, the FIRST boundary_type wins (classifier priority order).
         detected: list[tuple] = []
         seen_bnd: set[tuple] = set()
         for b in bnd_list:
@@ -273,24 +300,52 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
             detected.append((b.get("module"), b.get("function_name"),
                              b.get("boundary_type", "?")))
         boundaries_total = len(detected)
-        covered = [d for d in detected if (d[0], d[1]) in covered_keys]
-        boundaries_covered = len(covered)
+
+        verdicts: dict[tuple, str] = {}
+        for m, fn, _bt in detected:
+            key = (m, fn)
+            tests = covering.get(key, []) if have_ctx else []
+            if key in engine_keys or any(_label_key(t) in asserting for t in tests):
+                verdicts[key] = "covered"  # asserted-on (or engine-gated) execution
+            elif tests:
+                verdicts[key] = "executed_only"  # ran, but nothing asserted
+            else:
+                verdicts[key] = "uncovered"
+        boundaries_covered = sum(1 for v in verdicts.values() if v == "covered")
+        boundaries_executed_only = sum(
+            1 for v in verdicts.values() if v == "executed_only")
         boundary_pct = round(boundaries_covered / boundaries_total * 100.0, 2)
-        untested = [d for d in detected if (d[0], d[1]) not in covered_keys]
+        untested = [d for d in detected if verdicts[(d[0], d[1])] == "uncovered"]
+        exec_only = [d for d in detected if verdicts[(d[0], d[1])] == "executed_only"]
+
+        if have_ctx:
+            headline = (f"{boundary_pct}% of external boundaries are exercised by "
+                        f"an asserting test ({boundaries_covered}/{boundaries_total}"
+                        + (f"; {boundaries_executed_only} executed-only"
+                           if boundaries_executed_only else "") + ")")
+        else:  # Phase G fallback: engine-written integration tests only
+            headline = (f"{boundary_pct}% of external boundaries have a passing "
+                        f"integration test ({boundaries_covered}/{boundaries_total})")
         dims.append(DimensionRollup(
             name="system (boundary coverage)",
-            # warn (not fail) when boundaries are untested: measure-only runs have
-            # written no integration tests yet, and that shouldn't red the gate.
+            # warn (not fail) when boundaries are untested: measure-only runs on a
+            # suite without boundary tests shouldn't red the gate.
             status=(DimensionStatus.passed if boundaries_covered == boundaries_total
                     else DimensionStatus.warn),
-            headline=(f"{boundary_pct}% of external boundaries have a passing "
-                      f"integration test ({boundaries_covered}/{boundaries_total})"),
+            headline=headline,
             detail={
                 "boundaries_total": boundaries_total,
                 "boundaries_covered": boundaries_covered,
+                "boundaries_executed_only": boundaries_executed_only,
                 "boundary_coverage_pct": boundary_pct,
-                # the "what to test next" worklist of untested boundaries
+                "attribution": "contexts" if have_ctx else "engine-only",
+                # loop-closure sub-stat: boundaries with an engine-written pass
+                "engine_covered": sum(1 for d in detected
+                                      if (d[0], d[1]) in engine_keys),
+                # the "what to test next" worklists
                 "untested_sample": [f"{m}.{fn} ({bt})" for m, fn, bt in untested[:10]],
+                "executed_only_sample": [f"{m}.{fn} ({bt})"
+                                         for m, fn, bt in exec_only[:10]],
             },
         ))
 
@@ -388,6 +443,7 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         boundary_coverage_pct=boundary_pct,
         boundaries_total=boundaries_total,
         boundaries_covered=boundaries_covered,
+        boundaries_executed_only=boundaries_executed_only,
         log_path_coverage_pct=log_path_pct,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,
