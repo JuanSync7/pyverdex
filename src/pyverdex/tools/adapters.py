@@ -180,6 +180,10 @@ def _contexts_rcfile(project_root: Path) -> Path:
     Only the ``[run]`` section is merged — plugin option sections referenced
     from ``plugins`` are a documented v1 limitation (ADR 0006).
     """
+    # Resolve to an ABSOLUTE path: the caller unlinks this in a finally, and a
+    # relative project_root + a test that chdirs in between made the unlink
+    # miss silently — leaking .pyverdex-covrc-* files (seen in the H2 commit).
+    project_root = Path(project_root).resolve()
     options = _target_run_options(project_root)
     options["dynamic_context"] = "test_function"  # ours wins over any target value
     lines = ["[run]"]

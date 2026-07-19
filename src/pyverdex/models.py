@@ -320,6 +320,13 @@ class UnifiedCoverageReport(BaseModel):
     boundaries_total: int = 0
     boundaries_covered: int = 0
     boundaries_executed_only: int = 0
+    # realness grading of covered boundaries (Phase H2): real_covered = best
+    # covering test tier in {in_process, real} or unreplaced-deps (unknown);
+    # mock_only = only ever covered against a replaced dependency. pct None
+    # when the classifier or contexts were unavailable (never fake zeros).
+    boundaries_real_covered: int = 0
+    boundaries_mock_only: int = 0
+    boundary_realness_pct: Optional[float] = None
     # log-path coverage (fraction of branch nodes that emit a log) — surfaced from
     # the log_contract_validator report; None when that report is absent
     log_path_coverage_pct: Optional[float] = None

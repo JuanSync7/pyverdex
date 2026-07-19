@@ -17,6 +17,7 @@ wheels/
 project/
 **/project/coverage/
 .coverage
+.pyverdex-covrc-*
 *.sqlite
 .pytest_cache/
 .ruff_cache/

@@ -261,6 +261,9 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
     boundaries_total = 0
     boundaries_covered = 0
     boundaries_executed_only = 0
+    boundaries_real_covered = 0
+    boundaries_mock_only = 0
+    realness_pct: float | None = None
     if bnd_list:
         # (module, fn) of every boundary the engine has a PASSING integration test for
         engine_keys = {
@@ -286,6 +289,22 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
             parts = label.rsplit(".", 2)
             return (parts[-2], parts[-1]) if len(parts) >= 2 else ("", label)
 
+        # test tiers from the realness classifier (Phase H2), keyed like labels.
+        # Grading needs contexts (else the fallback must stay Phase G exact).
+        realness = state.get("realness_report") or {}
+        tiers_by_key: dict[tuple, str] = {}
+        for t in realness.get("tests", []):
+            stem, _, fn = str(t.get("test_id", "")).rpartition(".")
+            if stem:
+                tiers_by_key[(stem, fn)] = t.get("tier", "unknown")
+        grade = have_ctx and bool(tiers_by_key)
+
+        def _tier_rank(tier: str) -> int:
+            # unknown = real-equivalent: no dependency-replacing signal means
+            # the dependencies ran UNREPLACED — demotion to mock_only needs
+            # positive evidence of replacement (ADR 0007)
+            return {"mock": 0, "fake": 1, "in_process": 2, "real": 3}.get(tier, 2)
+
         # dedupe on (module, function_name): the classifier emits one entry per
         # function (strict priority), but keep the denominator robust to any
         # repeat so it can't diverge from the set-based numerators below. On a
@@ -305,20 +324,52 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         for m, fn, _bt in detected:
             key = (m, fn)
             tests = covering.get(key, []) if have_ctx else []
-            if key in engine_keys or any(_label_key(t) in asserting for t in tests):
-                verdicts[key] = "covered"  # asserted-on (or engine-gated) execution
+            asserting_tests = [t for t in tests if _label_key(t) in asserting]
+            if key in engine_keys or asserting_tests:
+                # asserted-on (or engine-gated) execution; grade by the BEST
+                # covering tier when the realness classifier ran. Engine-lifted
+                # boundaries with no attributed asserting test stay ungraded
+                # "covered" (no data is not mock evidence).
+                verdict = "covered"
+                if grade and asserting_tests:
+                    best = max(_tier_rank(tiers_by_key.get(_label_key(t), "unknown"))
+                               for t in asserting_tests)
+                    verdict = "real_covered" if best >= 2 else "mock_only"
+                verdicts[key] = verdict
             elif tests:
                 verdicts[key] = "executed_only"  # ran, but nothing asserted
             else:
                 verdicts[key] = "uncovered"
-        boundaries_covered = sum(1 for v in verdicts.values() if v == "covered")
+        _covered_verdicts = {"covered", "real_covered", "mock_only"}
+        boundaries_covered = sum(
+            1 for v in verdicts.values() if v in _covered_verdicts)
+        boundaries_real_covered = sum(
+            1 for v in verdicts.values() if v == "real_covered")
+        boundaries_mock_only = sum(
+            1 for v in verdicts.values() if v == "mock_only")
         boundaries_executed_only = sum(
             1 for v in verdicts.values() if v == "executed_only")
         boundary_pct = round(boundaries_covered / boundaries_total * 100.0, 2)
         untested = [d for d in detected if verdicts[(d[0], d[1])] == "uncovered"]
         exec_only = [d for d in detected if verdicts[(d[0], d[1])] == "executed_only"]
+        mock_only = [d for d in detected if verdicts[(d[0], d[1])] == "mock_only"]
 
-        if have_ctx:
+        # graded data exists when some boundary actually got a tier verdict —
+        # a report where every covered boundary is an ungraded engine-lift must
+        # NOT claim "0% real" (no data is not a zero); all-uncovered is an
+        # honest 0 and keeps the realness headline.
+        graded_data = (boundaries_real_covered + boundaries_mock_only > 0
+                       or boundaries_covered == 0)
+        if grade and graded_data:
+            realness_pct = round(
+                boundaries_real_covered / boundaries_total * 100.0, 2)
+            extras = [f"{boundaries_mock_only} mock-only"] if boundaries_mock_only else []
+            if boundaries_executed_only:
+                extras.append(f"{boundaries_executed_only} executed-only")
+            headline = (f"{realness_pct}% of external boundaries are real-tested "
+                        f"({boundaries_real_covered}/{boundaries_total}"
+                        + (f"; {', '.join(extras)}" if extras else "") + ")")
+        elif have_ctx:
             headline = (f"{boundary_pct}% of external boundaries are exercised by "
                         f"an asserting test ({boundaries_covered}/{boundaries_total}"
                         + (f"; {boundaries_executed_only} executed-only"
@@ -337,8 +388,12 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                 "boundaries_total": boundaries_total,
                 "boundaries_covered": boundaries_covered,
                 "boundaries_executed_only": boundaries_executed_only,
+                "boundaries_real_covered": boundaries_real_covered,
+                "boundaries_mock_only": boundaries_mock_only,
                 "boundary_coverage_pct": boundary_pct,
-                "attribution": "contexts" if have_ctx else "engine-only",
+                "boundary_realness_pct": realness_pct,
+                "attribution": ("contexts+realness" if grade
+                                else "contexts" if have_ctx else "engine-only"),
                 # loop-closure sub-stat: boundaries with an engine-written pass
                 "engine_covered": sum(1 for d in detected
                                       if (d[0], d[1]) in engine_keys),
@@ -346,6 +401,9 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                 "untested_sample": [f"{m}.{fn} ({bt})" for m, fn, bt in untested[:10]],
                 "executed_only_sample": [f"{m}.{fn} ({bt})"
                                          for m, fn, bt in exec_only[:10]],
+                # covered, but only ever against a replaced dependency
+                "mock_only_sample": [f"{m}.{fn} ({bt})"
+                                     for m, fn, bt in mock_only[:10]],
             },
         ))
 
@@ -444,6 +502,9 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         boundaries_total=boundaries_total,
         boundaries_covered=boundaries_covered,
         boundaries_executed_only=boundaries_executed_only,
+        boundaries_real_covered=boundaries_real_covered,
+        boundaries_mock_only=boundaries_mock_only,
+        boundary_realness_pct=realness_pct,
         log_path_coverage_pct=log_path_pct,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,

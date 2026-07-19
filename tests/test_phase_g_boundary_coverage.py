@@ -94,11 +94,13 @@ def test_audit_boundary_report_flows_into_report_dimension(tmp_path):
     out = build_audit_graph(cfg).invoke(_audit_state(cfg))
     report = build_unified_report({**_audit_state(cfg), **out, "generated": []}, cfg)
     assert report.boundaries_total >= 1
-    # test_handler executes handler() and asserts on its result -> covered
+    # test_handler executes handler() and asserts on its result -> covered;
+    # it replaces no dependency, so realness (Phase H2) grades it real_covered
     assert report.boundaries_covered == report.boundaries_total
+    assert report.boundaries_real_covered == report.boundaries_total
     dim = next(d for d in report.dimensions if d.name.startswith("system"))
     assert dim.status is DimensionStatus.passed
-    assert dim.detail["attribution"] == "contexts"
+    assert dim.detail["attribution"] == "contexts+realness"
     assert dim.detail["engine_covered"] == 0  # no integration tests written
     assert dim.detail["untested_sample"] == []
 

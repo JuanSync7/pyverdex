@@ -132,6 +132,9 @@ def test_contexts_rcfile_merges_target_options_and_wins_on_dynamic_context(tmp_p
         "[run]\nconcurrency = thread\ndynamic_context = none\n", encoding="utf-8")
     rcfile = _contexts_rcfile(tmp_path)
     try:
+        # absolute: the runner unlinks it in a finally, and a relative path
+        # would silently miss (and leak) if a test chdir'd meanwhile
+        assert rcfile.is_absolute()
         import configparser
 
         cp = configparser.ConfigParser()

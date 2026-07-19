@@ -30,7 +30,7 @@ from ..config import Config
 from ..models import AuditGapReport, CoverageGapRecord, CoverageState, ModuleCoverage
 from ..state import EngineState
 from ..tools import adapters
-from . import _contexts, _edges
+from . import _contexts, _edges, _realness
 
 
 def build_audit_graph(config: Config):
@@ -141,6 +141,18 @@ def build_audit_graph(config: Config):
                 min_assertions=thresholds.assertion_min)
             if aq.data is not None:
                 out["assertion_report"] = aq.data
+
+            # mock/fake/in_process/real test tiering (Phase H2): grades the
+            # system dimension's covered verdicts by what kind of test covered
+            if config.audit.realness:
+                rr = _realness.classify_tests(test, root)
+                out["realness_report"] = rr
+                counts = rr.get("counts", {})
+                if counts:
+                    summary = ", ".join(
+                        f"{n} {t}" for t, n in sorted(counts.items()))
+                    out["log"].append(
+                        f"audit/snapshot: test realness — {summary}")
 
             lc = adapters.run_log_contract(source)
             if lc.ok and lc.data is not None:
