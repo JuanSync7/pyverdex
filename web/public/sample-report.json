@@ -166,6 +166,19 @@
       }
     },
     {
+      "name": "failure-path",
+      "status": "warn",
+      "headline": "0.0% of handled boundaries have an exercised failure path (0/1)",
+      "detail": {
+        "failure_paths_total": 1,
+        "failure_paths_covered": 0,
+        "failure_path_coverage_pct": 0.0,
+        "boundaries_unprotected": 0,
+        "uncovered_sample": ["shop.api.handle_checkout"],
+        "unprotected_sample": []
+      }
+    },
+    {
       "name": "log-path",
       "status": "pass",
       "headline": "60.0% log-path coverage (3/5 branches log)",
@@ -208,6 +221,12 @@
   "boundaries_real_covered": 0,
   "boundaries_mock_only": 0,
   "boundary_realness_pct": 0.0,
+  "failure_path_coverage_pct": 0.0,
+  "failure_paths_total": 1,
+  "failure_paths_covered": 0,
+  "boundaries_unprotected": 0,
+  "app_factories_total": 0,
+  "app_factories_executed": null,
   "log_path_coverage_pct": 60.0,
   "mutation_kill_rate": null,
   "weak_tests": 0,

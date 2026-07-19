@@ -30,7 +30,7 @@ from ..config import Config
 from ..models import AuditGapReport, CoverageGapRecord, CoverageState, ModuleCoverage
 from ..state import EngineState
 from ..tools import adapters
-from . import _contexts, _edges, _realness
+from . import _boot, _contexts, _edges, _failpaths, _realness
 
 
 def build_audit_graph(config: Config):
@@ -134,6 +134,37 @@ def build_audit_graph(config: Config):
                 out["log"].append(
                     "audit/snapshot: no per-test contexts in .coverage "
                     "(attribution unavailable)")
+
+        # failure-path coverage: are boundary except-handlers ever exercised?
+        if config.audit.failure_paths and source.exists():
+            fp = _failpaths.failure_path_report(
+                root, source, (out.get("boundary_report") or {}).get("boundaries"))
+            # only when something was mapped -> state key + dimension (like boot)
+            if fp["total"] or fp["unprotected_total"]:
+                out["failure_path_report"] = fp
+                if fp["have_coverage"]:
+                    out["log"].append(
+                        f"audit/snapshot: failure paths {fp['covered']}/{fp['total']} "
+                        f"handled boundaries exercised; {fp['unprotected_total']} "
+                        "boundaries have no error handling")
+                else:
+                    out["log"].append(
+                        f"audit/snapshot: {fp['total']} handled boundaries mapped "
+                        "(no coverage data for failure paths)")
+
+        # boot smoke: is the composition root constructed by any test?
+        if config.audit.boot_smoke and source.exists():
+            br = _boot.boot_report(root, source)
+            if br["total"]:
+                out["boot_report"] = br
+                if br["have_coverage"]:
+                    out["log"].append(
+                        f"audit/snapshot: boot — {br['executed']}/{br['total']} "
+                        "app factories executed by tests")
+                else:
+                    out["log"].append(
+                        f"audit/snapshot: {br['total']} app factories mapped "
+                        "(no coverage data)")
 
         if test.exists():
             aq = adapters.run_assertion_quality(

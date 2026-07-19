@@ -187,6 +187,10 @@ class AuditConfig(BaseModel):
     # mock/fake/in_process/real tiering of tests (Phase H2); grades the system
     # dimension's "covered" verdicts, absence leaves them ungraded
     realness: bool = True
+    # failure-path coverage of boundary except-handlers (Phase I)
+    failure_paths: bool = True
+    # composition-root (app factory) executed-by-a-test signal (Phase I)
+    boot_smoke: bool = True
 
     @field_validator("import_smoke_timeout")
     @classmethod

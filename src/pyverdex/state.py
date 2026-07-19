@@ -48,6 +48,8 @@ class EngineState(TypedDict, total=False):
     boundary_report: dict[str, Any]
     test_attribution: dict[str, Any]  # per-test boundary attribution via contexts (Phase H)
     realness_report: dict[str, Any]  # per-test mock/fake/in_process/real tiers (Phase H2)
+    failure_path_report: dict[str, Any]  # boundary except-handler coverage (Phase I)
+    boot_report: dict[str, Any]  # app-factory executed-by-test signal (Phase I)
     assertion_report: dict[str, Any]
     log_contract_report: dict[str, Any]
     smoke_report: dict[str, Any]  # import-sweep health {total, imported, failures}
