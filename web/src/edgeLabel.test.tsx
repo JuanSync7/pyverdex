@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { edgeLabel, Report, systemLabel } from "./api";
+import { edgeLabel, failurePathLabel, Report, systemLabel } from "./api";
 
 const base: Report = {
   overall_status: "pass",
@@ -22,6 +22,12 @@ const base: Report = {
   boundaries_real_covered: 0,
   boundaries_mock_only: 0,
   boundary_realness_pct: null,
+  failure_path_coverage_pct: null,
+  failure_paths_total: 0,
+  failure_paths_covered: 0,
+  boundaries_unprotected: 0,
+  app_factories_total: 0,
+  app_factories_executed: null,
   log_path_coverage_pct: null,
   mutation_kill_rate: null,
   weak_tests: 0,
@@ -84,5 +90,41 @@ describe("systemLabel", () => {
         boundary_realness_pct: 40,
       }),
     ).toBe("system 40% real (2/5, 1 mock-only, 1 exec-only)");
+  });
+});
+
+describe("failurePathLabel", () => {
+  it("returns null when nothing was mapped", () => {
+    expect(failurePathLabel(base)).toBeNull();
+  });
+
+  it("shows the exercised ratio with the unprotected count", () => {
+    expect(
+      failurePathLabel({
+        ...base,
+        failure_paths_total: 4,
+        failure_paths_covered: 1,
+        failure_path_coverage_pct: 25,
+        boundaries_unprotected: 3,
+      }),
+    ).toBe("fail-paths 25% (1/4, 3 unprotected)");
+  });
+
+  it("shows mapped-only when unmeasured", () => {
+    expect(
+      failurePathLabel({ ...base, failure_paths_total: 4, failure_path_coverage_pct: null }),
+    ).toBe("fail-paths 4 mapped");
+  });
+
+  it("omits the unprotected count when zero", () => {
+    expect(
+      failurePathLabel({
+        ...base,
+        failure_paths_total: 4,
+        failure_paths_covered: 2,
+        failure_path_coverage_pct: 50,
+        boundaries_unprotected: 0,
+      }),
+    ).toBe("fail-paths 50% (2/4)");
   });
 });

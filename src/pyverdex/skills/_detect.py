@@ -143,4 +143,81 @@ def detect_framework(module: str, source_root: Path) -> Optional[str]:
     return detected[0] if detected else None
 
 
-__all__ = ["detect_boundary", "detect_framework", "CATEGORY_PATTERN"]
+# --- composition-root (app factory) detection — Phase I boot smoke ----------
+
+# Conventional factory names, plus: any top-level function whose body
+# CONSTRUCTS a framework app object counts even under another name.
+_FACTORY_NAMES = {"create_app", "make_app", "build_app", "get_app",
+                  "build_container", "main"}
+_APP_CONSTRUCTORS = {"FastAPI", "Flask", "Starlette", "Celery", "Typer"}
+
+# You don't boot code you don't own: vendored/third-party trees ship their own
+# CLI main()s, which would flood the boot dimension with composition roots the
+# target project never assembles (dogfood: 10 of 12 detected "factories" were
+# vendored tools' entry points).
+_VENDORED_DIRS = {"vendored", "node_modules", ".venv", "venv", "site-packages"}
+
+
+def _constructs_app(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Optional[str]:
+    """The framework-app class name THIS function's own body constructs.
+
+    Does not descend into nested defs/classes/lambdas: a helper factory
+    defined inside a plain function must not mark the outer function as the
+    composition root (construction under if/with/try still counts).
+    """
+    stack: list[ast.AST] = list(fn.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef, ast.Lambda)):
+            continue  # nested scope constructs are its own, not ours
+        if isinstance(node, ast.Call):
+            target = node.func
+            name = target.attr if isinstance(target, ast.Attribute) else (
+                target.id if isinstance(target, ast.Name) else None)
+            if name in _APP_CONSTRUCTORS:
+                return name
+        stack.extend(ast.iter_child_nodes(node))
+    return None
+
+
+def detect_app_factories(source_root: Path) -> list[dict]:
+    """Composition-root candidates: top-level functions with a conventional
+    factory name OR that construct a framework app object in their body.
+
+    Module-level ``app = FastAPI()`` wiring executes at import time and is
+    already exercised by the import-smoke sweep, so only *functions* — the
+    wiring that a test must deliberately call — are detected here (ADR 0008).
+    """
+    from ._edges import _module_name
+
+    factories: list[dict] = []
+    root = Path(source_root)
+    for py in sorted(root.rglob("*.py")):
+        if _VENDORED_DIRS.intersection(py.relative_to(root).parts):
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except (SyntaxError, OSError, ValueError):
+            continue
+        module = _module_name(py, root)
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            constructed = _constructs_app(node)
+            if node.name in _FACTORY_NAMES or constructed:
+                end = getattr(node, "end_lineno", None) or node.lineno
+                factories.append({
+                    "module": module, "function_name": node.name,
+                    "line_start": node.lineno, "line_end": end,
+                    # executed-join anchor: the def line runs at IMPORT time,
+                    # so "was the factory called" must look at BODY lines only
+                    "body_start": node.body[0].lineno if node.body else node.lineno,
+                    "reason": (f"constructs:{constructed}" if constructed
+                               else "factory-name"),
+                })
+    return factories
+
+
+__all__ = ["detect_boundary", "detect_framework", "detect_app_factories",
+           "CATEGORY_PATTERN"]
