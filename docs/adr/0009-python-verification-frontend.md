@@ -13,7 +13,7 @@ canonical: true
 ---
 # 0009 — pyverdex as the Python verification frontend over packaged playbooks
 
-- **Status:** proposed (rulings R1–R10 are the owner's; P1–P4 are proposals awaiting a ruling)
+- **Status:** proposed (rulings R1–R16 are the owner's; P2–P5 are proposals awaiting a ruling)
 - **Date:** 2026-11-24
 
 ## Context
@@ -55,14 +55,33 @@ Python be confident in code an agent implemented.
 - **R10** No quarantine for flaky tests (a flaky test is a defect to fix), and
   no nightly-only tests: a nightly run may be an extra, never instead of the
   one gate.
+- **R11** pyverdex owns its measuring tools: they are committed and tested
+  here, and the sync script from the retired repo goes.
+- **R12** Playbooks move between their private source and this repo by pull
+  request in both directions, the way a local and a remote clone do. There is
+  no one-way sync.
+- **R13** A test is never derived from the code it tests: that is marking your
+  own homework. Every test traces to an approved expectation (the ask, scope,
+  requirement, design or test plan). There is no "derived from code" category,
+  and the mode that writes tests from coverage gaps is removed. An uncovered
+  line is a question for the spec (is this behaviour wanted?) or dead code,
+  never a prompt to write a test.
+- **R14** The author of the code never writes the tests that judge it, and this
+  is enforced outside the model, not left to an instruction.
+- **R15** The run ends in outputs a non-Python reader can trust: a
+  plain-language verdict page, the real entry points run from a clean clone,
+  changed code judged on its own, and "lint clean" meaning style, types,
+  security and dependency checks.
+- **R16** Code-quality checks live in both pyverdex and the playbooks:
+  idempotency, exit codes, error handling (nothing swallowed), message
+  wording, and dead code, unreachable code and dangling branches.
 
 ## Proposals (not yet ruled)
 
-- **P1 Packaging.** The Python playbooks are exported into this repo as a
-  rendered pack with a digest, the same way the owner's rule decks are packaged
-  as a plugin. The private store stays the source; this repo never edits a
-  rendered file, and a drift test fails on a digest mismatch. A redaction pass
-  runs before export, because this repo is public.
+- **P1 Packaging.** Superseded by R12. What carries over: a pull into this
+  repo is redacted first (this repo is public), and a change made here to a
+  generated rules file goes back as a change to its source, never as an edit
+  of the generated file.
 - **P2 Measurement as kernel, judging as checks.** Measurement is a kernel tool
   that writes an evidence file (the pyverdex report JSON). Each target is held
   by a stdlib check (`playbook-check/1`) that reads only that file. The builder
@@ -73,12 +92,18 @@ Python be confident in code an agent implemented.
   config, thresholds or coverage exclusions, or delete tests; a check holds each.
 - **P4 Freeze.** No new LLM-loop features (Phase L) until roadmap slices S1–S4
   land. Measurement work (Phase I, PR #15) is unaffected.
+- **P5 The split.** One test decides where a piece lives: if it needs a
+  package, a subprocess or a sandbox, it is pyverdex; if it is files and the
+  standard library, it is the playbook. The playbooks hold the procedure, the
+  rules, the review questions, every judging check, and the evidence format
+  (the judge owns the contract). pyverdex holds the measuring engine, the
+  sandbox, the loop and its author separation, and the verdict outputs; its
+  transports (CLI, MCP, web dashboard) stay thin. A playbook used alone calls
+  `pyverdex measure` as its kernel tool where it needs a measurement, then
+  runs its own checks.
 
 ## Open questions
 
-1. Own the measurement tools here (roadmap Q4): they are copied in from a
-   retired repo and not committed, so a fresh clone cannot run.
-2. Trace results to intent (roadmap Q6): today every test pyverdex writes is
-   derived from the code it tests, so coverage and mutation show the tests
-   pin the current behaviour, bugs included, not that the code does what was
-   asked.
+1. The split (P5): measuring tools in pyverdex, or in the playbook kernels?
+2. Existing code with no written expectations: where do its expectations come
+   from, given R13?
