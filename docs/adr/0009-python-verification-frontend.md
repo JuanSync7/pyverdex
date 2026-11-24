@@ -13,7 +13,7 @@ canonical: true
 ---
 # 0009 — pyverdex as the Python verification frontend over packaged playbooks
 
-- **Status:** proposed (rulings R1–R16 are the owner's; P2–P5 are proposals awaiting a ruling)
+- **Status:** proposed (rulings R1–R18 are the owner's; P2–P4 are proposals awaiting a ruling)
 - **Date:** 2026-11-24
 
 ## Context
@@ -75,6 +75,20 @@ Python be confident in code an agent implemented.
 - **R16** Code-quality checks live in both pyverdex and the playbooks:
   idempotency, exit codes, error handling (nothing swallowed), message
   wording, and dead code, unreachable code and dangling branches.
+- **R17** Same product, different offerings. The deterministic tools
+  (measuring and judging) ship inside the playbook pack, so a playbook runs on
+  its own, for example as a mutation-test node in another orchestrator that has
+  never heard of pyverdex. pyverdex is the full offering: the loop, the agents,
+  the sandbox launcher and the verdict page. Each file has one home: the tools
+  are written and tested here and go out to the pack by pull request; the
+  procedure and rules come in from their source the same way. A tool carries
+  its own safety (mutation works on a copy and refuses to edit in place),
+  because a host that runs it alone has no pyverdex sandbox.
+- **R18** Existing code with no written expectations: a deterministic tool
+  (no model) extracts the public interface, names and types with no bodies, and
+  a fresh test author sees only that interface and the owner's answers to
+  plain-language questions. The known weak spot is a bug in the interface
+  itself; see the review rules below.
 
 ## Proposals (not yet ruled)
 
@@ -92,18 +106,20 @@ Python be confident in code an agent implemented.
   config, thresholds or coverage exclusions, or delete tests; a check holds each.
 - **P4 Freeze.** No new LLM-loop features (Phase L) until roadmap slices S1–S4
   land. Measurement work (Phase I, PR #15) is unaffected.
-- **P5 The split.** One test decides where a piece lives: if it needs a
-  package, a subprocess or a sandbox, it is pyverdex; if it is files and the
-  standard library, it is the playbook. The playbooks hold the procedure, the
-  rules, the review questions, every judging check, and the evidence format
-  (the judge owns the contract). pyverdex holds the measuring engine, the
-  sandbox, the loop and its author separation, and the verdict outputs; its
-  transports (CLI, MCP, web dashboard) stay thin. A playbook used alone calls
-  `pyverdex measure` as its kernel tool where it needs a measurement, then
-  runs its own checks.
+- **P5 The split (refined by R17).** Kernel tools are standard library plus
+  the project's own test tools (pytest, coverage, the linters), run with the
+  project's interpreter; a missing one fails closed as a configuration error.
+  Checks stay on the `playbook-check/1` contract. Whatever needs a model, the
+  loop or a service stays in pyverdex.
+- **P6 Interface review (R18).** Default values and docstrings carry behaviour
+  through the interface, so they are shown to the owner as claims to confirm,
+  never given to the test author as facts. An answer the interface cannot
+  express (for example "a negative refund is rejected" on a function that
+  returns only yes or no) is an interface bug and becomes a change request.
+  A surviving mutant becomes a neutral question ("what should happen for a
+  refund of exactly 500?"), never "it does X, is that right?"; the agent that
+  reads code to phrase it never writes tests and never answers.
 
 ## Open questions
 
-1. The split (P5): measuring tools in pyverdex, or in the playbook kernels?
-2. Existing code with no written expectations: where do its expectations come
-   from, given R13?
+1. P5 and P6 await a ruling.
