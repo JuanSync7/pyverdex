@@ -99,6 +99,13 @@ to S4 land (ADR P4).
 
 ## Done
 
+- **Baseline on main, each gate run inside the isolation wrapper:** structure
+  pass; ruff pass; pytest pass (181 tests, exit 0); mypy **fail**, 48 errors
+  (39 in the copied-in tools, 9 in this repo's code); frontend tests **not
+  run** (no `node_modules`, and the target passes by skipping). So
+  `make verify` is red on main. PR #15's branch gives the same four results
+  (pytest exit 0; its test count was not captured), so it adds no failure.
+
 - ADR 0009 drafted (status: proposed); rulings R1 to R19 recorded.
 - Read-only audits of both sides: the older test skills against the current
   playbooks, and this code against the playbook check contract.
