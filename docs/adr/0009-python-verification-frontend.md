@@ -13,7 +13,7 @@ canonical: true
 ---
 # 0009 — pyverdex as the Python verification frontend over packaged playbooks
 
-- **Status:** proposed (rulings R1–R18 are the owner's; P2–P4 are proposals awaiting a ruling)
+- **Status:** proposed (rulings R1–R19 are the owner's; P2–P5 and P7 are proposals awaiting a ruling)
 - **Date:** 2026-11-24
 
 ## Context
@@ -55,8 +55,9 @@ Python be confident in code an agent implemented.
 - **R10** No quarantine for flaky tests (a flaky test is a defect to fix), and
   no nightly-only tests: a nightly run may be an extra, never instead of the
   one gate.
-- **R11** pyverdex owns its measuring tools: they are committed and tested
-  here, and the sync script from the retired repo goes.
+- **R11** The measuring tools stop being an uncommitted copy from a retired
+  repo: a fresh clone has them, and the sync script goes. Their one home is
+  R17.
 - **R12** Playbooks move between their private source and this repo by pull
   request in both directions, the way a local and a remote clone do. There is
   no one-way sync.
@@ -75,20 +76,23 @@ Python be confident in code an agent implemented.
 - **R16** Code-quality checks live in both pyverdex and the playbooks:
   idempotency, exit codes, error handling (nothing swallowed), message
   wording, and dead code, unreachable code and dangling branches.
-- **R17** Same product, different offerings. The deterministic tools
-  (measuring and judging) ship inside the playbook pack, so a playbook runs on
-  its own, for example as a mutation-test node in another orchestrator that has
-  never heard of pyverdex. pyverdex is the full offering: the loop, the agents,
-  the sandbox launcher and the verdict page. Each file has one home: the tools
-  are written and tested here and go out to the pack by pull request; the
-  procedure and rules come in from their source the same way. A tool carries
-  its own safety (mutation works on a copy and refuses to edit in place),
-  because a host that runs it alone has no pyverdex sandbox.
-- **R18** Existing code with no written expectations: a deterministic tool
-  (no model) extracts the public interface, names and types with no bodies, and
-  a fresh test author sees only that interface and the owner's answers to
-  plain-language questions. The known weak spot is a bug in the interface
-  itself; see the review rules below.
+- **R17** Same product, different offerings. A playbook is usable on its own,
+  for example as a mutation-test node under another orchestrator that knows
+  nothing of pyverdex. The hard files (the deterministic tools and the checks)
+  sit in the playbook, with no duplicate. pyverdex is the full offering on top.
+- **R18** Existing code with no written expectations: hide the internals,
+  produce the interface, and start a new test author that sees only the
+  interface and the owner's answers to plain-language questions. Known weak
+  spot: a bug in the interface itself (R19).
+- **R19** Interface guards. Default values and docstrings carry behaviour
+  through the interface, so they go to the owner as claims to confirm, never to
+  the test author as facts. An answer the interface cannot express is an
+  interface bug and becomes a change request. A surviving mutant becomes a
+  neutral question ("what should happen for a refund of exactly 500?"), never
+  "it does X, is that right?"; the agent that reads code to phrase it never
+  writes tests and never answers.
+- **Direction, sequence not ruled:** rebase this repo on the current Keel
+  template and track its work in the owner's project ledger (roadmap Q9).
 
 ## Proposals (not yet ruled)
 
@@ -106,20 +110,24 @@ Python be confident in code an agent implemented.
   config, thresholds or coverage exclusions, or delete tests; a check holds each.
 - **P4 Freeze.** No new LLM-loop features (Phase L) until roadmap slices S1–S4
   land. Measurement work (Phase I, PR #15) is unaffected.
-- **P5 The split (refined by R17).** Kernel tools are standard library plus
-  the project's own test tools (pytest, coverage, the linters), run with the
-  project's interpreter; a missing one fails closed as a configuration error.
-  Checks stay on the `playbook-check/1` contract. Whatever needs a model, the
-  loop or a service stays in pyverdex.
-- **P6 Interface review (R18).** Default values and docstrings carry behaviour
-  through the interface, so they are shown to the owner as claims to confirm,
-  never given to the test author as facts. An answer the interface cannot
-  express (for example "a negative refund is rejected" on a function that
-  returns only yes or no) is an interface bug and becomes a change request.
-  A surviving mutant becomes a neutral question ("what should happen for a
-  refund of exactly 500?"), never "it does X, is that right?"; the agent that
-  reads code to phrase it never writes tests and never answers.
+- **P5 What "no duplicate" needs (R17).** This repo carries a committed copy
+  of the playbook folder, as a clone carries a copy of its remote (R3 forbids
+  needing the source at run time). It stays one home only if (a) the engine
+  runs the tools from that folder and keeps no second copy under `src/`,
+  (b) a change here goes back by pull request, and (c) a tool that several
+  playbooks need has one shared place in the pack, not a copy per playbook.
+  A tool carries its own safety (mutation works on a copy and refuses to edit
+  in place), because a host that runs it alone has no pyverdex sandbox. A tool
+  runs under the interpreter of the project being tested, so it may need only
+  the standard library and that project's own test tools; anything else it
+  needs fails closed as a configuration error.
+- **P7 Interface extraction is deterministic (R18).** No model reads the code
+  to produce the interface: names and types, no bodies.
 
 ## Open questions
 
-1. P5 and P6 await a ruling.
+1. P5 and P7 await a ruling.
+2. A test written from an approved expectation may fail on existing code. That
+   is a finding ("you said X, the code does Y"), not a bad test. R9 assumed
+   such tests pass; the evidence format needs a state for it and the loop must
+   keep the test (roadmap S1).
