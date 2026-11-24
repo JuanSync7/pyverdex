@@ -136,10 +136,14 @@ def build_audit_graph(config: Config):
                     "(attribution unavailable)")
 
         # failure-path coverage: are boundary except-handlers ever exercised?
+        # Both Phase I keys are always written, None when off or nothing was
+        # mapped: audit is re-entered and a key left out keeps its old value.
+        out["failure_path_report"] = None
+        out["boot_report"] = None
         if config.audit.failure_paths and source.exists():
             fp = _failpaths.failure_path_report(
                 root, source, (out.get("boundary_report") or {}).get("boundaries"))
-            # only when something was mapped -> state key + dimension (like boot)
+            # only when something was mapped -> report + dimension (like boot)
             if fp["total"] or fp["unprotected_total"]:
                 out["failure_path_report"] = fp
                 if fp["have_coverage"]:
@@ -150,7 +154,7 @@ def build_audit_graph(config: Config):
                 else:
                     out["log"].append(
                         f"audit/snapshot: {fp['total']} handled boundaries mapped "
-                        "(no coverage data for failure paths)")
+                        "(no per-test coverage data for failure paths)")
 
         # boot smoke: is the composition root constructed by any test?
         if config.audit.boot_smoke and source.exists():
@@ -164,7 +168,7 @@ def build_audit_graph(config: Config):
                 else:
                     out["log"].append(
                         f"audit/snapshot: {br['total']} app factories mapped "
-                        "(no coverage data)")
+                        "(no per-test coverage data)")
 
         if test.exists():
             aq = adapters.run_assertion_quality(

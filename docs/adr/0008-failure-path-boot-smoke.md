@@ -52,19 +52,29 @@ the exception*.
      cannot measure recovery that does not exist) and surfaced as the
      **unprotected boundary** worklist — a first-class "add error handling
      or prove you don't need it" signal.
-   - *Numerator* — a boundary's failure path is covered when any handler-body
-     line executed (Phase F executed-lines reader); with contexts the report
-     names the forcing test(s).
+   - *Numerator* — a boundary's failure path is covered when a named test
+     executed a handler-body line (per-test contexts); the report names the
+     forcing test(s). A handler that only ran at import time is not covered.
+     A body written on the clause line (``except X: return 0``) has no
+     measurable line and never reads as covered. Without per-test contexts
+     nothing is measured: the dimension is not-run, never a ratio.
+   - Handlers of functions, lambdas and classes defined *inside* the boundary
+     belong to those, not to the boundary.
+   - A measured run in which no boundary has a handler still reports: the
+     dimension warns and carries the unprotected worklist.
    - v1 scope: handlers *inside* the boundary function; caller-side handlers
      around boundary call sites are deferred.
 2. **Boot smoke** (`skills/_detect.py::detect_app_factories` +
    `skills/_boot.py`): composition-root candidates are top-level functions
    with a conventional factory name (create_app/make_app/build_app/get_app/
    build_container/main) OR whose body constructs a framework app object
-   (FastAPI/Flask/Starlette/Celery/Typer). A factory is *executed* when any
-   **body** line ran under a test — the ``def`` line executes at import time
-   and must not count (caught by the Phase I test suite: a merely-imported
-   factory read as executed until the join was anchored to the body).
+   (FastAPI/Flask/Starlette/Celery/Typer). A factory is *executed* when a
+   named test ran a **body** line (per-test contexts) — the ``def`` line
+   executes at import time and must not count, and neither does a
+   module-level call such as ``app = create_app()``. A factory whose body
+   shares the ``def`` line cannot be measured by line and is reported as
+   not measured, never as executed. Without per-test contexts the dimension
+   is not-run.
    Module-level ``app = FastAPI()`` wiring executes at import and is already
    the import-smoke sweep's job; only functions are detected. Vendored /
    third-party trees (vendored, node_modules, venvs) are skipped — you don't

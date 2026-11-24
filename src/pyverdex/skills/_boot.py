@@ -5,13 +5,20 @@ ASSEMBLED: the factory that binds settings, resolves the DI container and
 instantiates every registered dependency can still be broken while all its
 parts import cleanly. This module joins :func:`_detect.detect_app_factories`
 (conventional factory names, or a body that constructs a framework app) with
-the executed-lines data the audit coverage run already produced: a factory is
-*executed* when any line of its body ran under some test; with Phase H
-contexts the report names which test.
+the per-test contexts the audit coverage run recorded: a factory is
+*executed* only when a body line ran **under a named test**. A line that ran
+at import time (a module-level ``app = create_app()``) carries no test and
+does not count.
 
-Degrades honestly: no ``.coverage`` → factories are *mapped* with
-``executed=None`` (measured-nothing, never fake zeros); no factories detected
-→ the dimension is absent entirely.
+Degrades honestly, never to fake zeros:
+
+- no ``.coverage``, or one without per-test contexts → "under a test" cannot
+  be told from "at import", so factories are *mapped* with ``executed=None``
+  and ``have_coverage`` is False;
+- a factory whose body shares the ``def`` line (``def create_app(): ...``)
+  cannot be measured by line → that one record has ``executed=None`` and is
+  not counted as executed;
+- no factories detected → the dimension is absent.
 """
 
 from __future__ import annotations
@@ -31,34 +38,34 @@ def boot_report(project_root: Path, source_root: Path) -> dict[str, Any]:
     contexts = (read_test_contexts(Path(project_root), Path(source_root))
                 if executed is not None else None)
 
+    measured = executed is not None and contexts is not None
     records: list[dict[str, Any]] = []
     executed_n = 0
     for f in factories:
         record = dict(f)
-        if executed is None:
+        # body lines only, and never the def line: it executes at import
+        # time, which would mark every merely-imported factory as "executed"
+        span = set(range(f.get("body_start", f["line_start"]),
+                         f["line_end"] + 1)) - {f["line_start"]}
+        if not measured or contexts is None or not span:
             record.update({"executed": None, "tests": []})
         else:
-            hit = executed.get(f["module"], set())
-            # body lines only: the def line executes at import time, which
-            # would mark every merely-imported factory as "executed"
-            span = set(range(f.get("body_start", f["line_start"]),
-                             f["line_end"] + 1))
-            ran = bool(span & hit)
+            mod_ctx = contexts.get(f["module"], {})
             tests: set[str] = set()
-            if ran and contexts:
-                mod_ctx = contexts.get(f["module"], {})
-                for line in span:
-                    tests.update(mod_ctx.get(line, set()))
+            for line in span:
+                tests.update(mod_ctx.get(line, set()))
+            ran = bool(tests)
             record.update({"executed": ran, "tests": sorted(tests)[:10]})
             if ran:
                 executed_n += 1
         records.append(record)
 
     return {
-        "have_coverage": executed is not None,
+        # True only when "ran under a test" could be measured at all
+        "have_coverage": measured,
         "factories": records,
         "total": len(records),
-        "executed": executed_n if executed is not None else None,
+        "executed": executed_n if measured else None,
     }
 
 

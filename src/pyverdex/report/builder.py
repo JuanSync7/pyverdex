@@ -417,7 +417,27 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         failure_paths_total = int(fp.get("total") or 0)
         boundaries_unprotected = int(fp.get("unprotected_total") or 0)
         fp_bnds = fp.get("boundaries", [])
-        if fp.get("have_coverage") and failure_paths_total:
+        unprotected_sample = [f"{u['module']}.{u['function_name']}"
+                              for u in fp.get("unprotected", [])[:10]]
+        if fp.get("have_coverage") and not failure_paths_total:
+            if boundaries_unprotected:
+                # measured, but no boundary has a handler: no ratio to take,
+                # the worklist of unprotected boundaries is the whole signal
+                dims.append(DimensionRollup(
+                    name="failure-path",
+                    status=DimensionStatus.warn,
+                    headline=(f"no boundary has error handling; "
+                              f"{boundaries_unprotected} boundaries unprotected"),
+                    detail={
+                        "failure_paths_total": 0,
+                        "failure_paths_covered": 0,
+                        "failure_path_coverage_pct": None,
+                        "boundaries_unprotected": boundaries_unprotected,
+                        "uncovered_sample": [],
+                        "unprotected_sample": unprotected_sample,
+                    },
+                ))
+        elif fp.get("have_coverage"):
             failure_paths_covered = int(fp.get("covered") or 0)
             failure_path_pct = round(
                 failure_paths_covered / failure_paths_total * 100.0, 2)
@@ -441,21 +461,22 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                     # worklists: force these exception paths next / add handling
                     "uncovered_sample": [f"{b['module']}.{b['function_name']}"
                                          for b in unhit[:10]],
-                    "unprotected_sample": [f"{u['module']}.{u['function_name']}"
-                                           for u in fp.get("unprotected", [])[:10]],
+                    "unprotected_sample": unprotected_sample,
                 },
             ))
         elif failure_paths_total or boundaries_unprotected:
-            # mapped but not measured (no .coverage) — honest not_run, no zeros
+            # mapped but not measured (no per-test coverage data) — honest
+            # not_run, no zeros
             dims.append(DimensionRollup(
                 name="failure-path",
                 status=DimensionStatus.not_run,
                 headline=(f"{failure_paths_total} handled boundaries mapped "
-                          "(no coverage data)"
+                          "(no per-test coverage data)"
                           + (f"; {boundaries_unprotected} unprotected"
                              if boundaries_unprotected else "")),
                 detail={"failure_paths_total": failure_paths_total,
-                        "boundaries_unprotected": boundaries_unprotected},
+                        "boundaries_unprotected": boundaries_unprotected,
+                        "unprotected_sample": unprotected_sample},
             ))
 
     # --- boot smoke: is the composition root constructed by any test? ---------
@@ -487,7 +508,7 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                 name="boot (composition root)",
                 status=DimensionStatus.not_run,
                 headline=(f"{app_factories_total} app factories mapped "
-                          "(no coverage data)"),
+                          "(no per-test coverage data)"),
                 detail={"app_factories_total": app_factories_total},
             ))
 

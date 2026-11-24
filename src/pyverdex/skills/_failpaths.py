@@ -15,12 +15,16 @@ line numbers, so this module enumerates handlers itself:
   Boundaries with **no** try/except are excluded from the denominator and
   surfaced as the *unprotected boundary* worklist — you can't measure
   recovery that doesn't exist, but you should know it doesn't.
-- **Numerator** — a boundary's failure path is *covered* when any of its
-  handler-body lines executed (read from ``.coverage`` via the Phase F
-  reader). Handler bodies only: the ``except X:`` clause line can execute on
-  a type-test without the handler running. With Phase H contexts, the report
-  also names *which test forced it* (spike-pinned: handler lines attribute
-  only to the forcing test).
+- **Numerator** — a boundary's failure path is *covered* when a named test
+  executed one of its handler-body lines (per-test contexts, Phase H); the
+  report names *which test forced it*. A handler that only ran at import time
+  is not covered. Handler bodies only: the ``except X:`` clause line can
+  execute on a type-test without the handler running, so a body written on
+  the clause line (``except X: return 0``) contributes no measurable line
+  and never reads as covered. Without per-test contexts nothing is measured
+  (``have_coverage`` False, every ``covered`` None).
+- **Scope** — handlers of functions, lambdas and classes *defined inside* the
+  boundary belong to those, not to the boundary.
 
 v1 scope: handlers *inside* the boundary function; caller-side handlers
 around boundary call sites are deferred (ADR 0008).
@@ -29,6 +33,7 @@ around boundary call sites are deferred (ADR 0008).
 from __future__ import annotations
 
 import ast
+from collections import deque
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,14 +44,26 @@ from ._edges import _executed_lines_by_module
 # Cap worklists embedded in state/report (same rationale as _edges._UNCOVERED_CAP)
 _SAMPLE_CAP = 50
 
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
 
 def _handler_line_sets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[int]]:
     """One line-set per except-handler *body* within the function (recursive:
     nested trys — including inside handler bodies — contribute their own).
     ``except*`` exception-group handlers (ast.TryStar, PEP 654) count too —
-    they'd otherwise silently vanish from the denominator."""
+    they'd otherwise silently vanish from the denominator.
+
+    Nested function, lambda and class scopes are not entered: their handlers
+    protect them, not this function. The clause line is never in a set, so a
+    body on the clause line yields an empty set — a handler that exists but
+    cannot be shown covered."""
     handlers: list[set[int]] = []
-    for node in ast.walk(fn):
+    pending: deque[ast.AST] = deque(ast.iter_child_nodes(fn))
+    while pending:
+        node = pending.popleft()
+        if isinstance(node, _NESTED_SCOPES):
+            continue
+        pending.extend(ast.iter_child_nodes(node))
         if not isinstance(node, (ast.Try, ast.TryStar)):
             continue
         for handler in node.handlers:
@@ -54,8 +71,8 @@ def _handler_line_sets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[i
             for stmt in handler.body:
                 end = getattr(stmt, "end_lineno", None) or stmt.lineno
                 lines.update(range(stmt.lineno, end + 1))
-            if lines:
-                handlers.append(lines)
+            lines.discard(handler.lineno)
+            handlers.append(lines)
     return handlers
 
 
@@ -101,8 +118,9 @@ def failure_path_report(
 ) -> dict[str, Any]:
     """JSON-serializable payload for ``state["failure_path_report"]``.
 
-    ``have_coverage`` False (no ``.coverage``) keeps the handler *map* but
-    marks every ``covered`` as None — mapped, not measured, never fake zeros.
+    ``have_coverage`` False (no ``.coverage``, or one without per-test
+    contexts) keeps the handler *map* but marks every ``covered`` as None —
+    mapped, not measured, never fake zeros.
     """
     bnd_list = boundaries or []
     handlers_by_key = boundary_handlers(Path(source_root), bnd_list)
@@ -110,6 +128,7 @@ def failure_path_report(
     contexts = (read_test_contexts(Path(project_root), Path(source_root))
                 if executed is not None else None)
 
+    measured = executed is not None and contexts is not None
     protected: list[dict[str, Any]] = []
     unprotected: list[dict[str, str]] = []
     for key, handlers in handlers_by_key.items():
@@ -121,18 +140,19 @@ def failure_path_report(
             "module": module, "function_name": fn_name,
             "handlers_total": len(handlers),
         }
-        if executed is None:
+        if not measured or contexts is None:
             record.update({"handlers_covered": None, "covered": None,
                            "forcing_tests": []})
         else:
-            hit = executed.get(module, set())
-            covered_handlers = [h for h in handlers if h & hit]
+            # a handler counts only when a named test ran one of its lines;
+            # lines that ran at import time carry no test
+            mod_ctx = contexts.get(module, {})
+            covered_handlers = [h for h in handlers
+                                if any(mod_ctx.get(line) for line in h)]
             forcing: set[str] = set()
-            if contexts:
-                mod_ctx = contexts.get(module, {})
-                for h in covered_handlers:
-                    for line in h:
-                        forcing.update(mod_ctx.get(line, set()))
+            for h in covered_handlers:
+                for line in h:
+                    forcing.update(mod_ctx.get(line, set()))
             record.update({
                 "handlers_covered": len(covered_handlers),
                 # any handler exercised => the boundary's failure path was hit
@@ -145,12 +165,13 @@ def failure_path_report(
     # never be confused with a measured False (or sneak into the count)
     covered_n = sum(1 for r in protected if r.get("covered") is True)
     return {
-        "have_coverage": executed is not None,
+        # True only when "a test forced it" could be measured at all
+        "have_coverage": measured,
         "boundaries": protected,
         "unprotected": unprotected[:_SAMPLE_CAP],
         "unprotected_total": len(unprotected),
         "total": len(protected),
-        "covered": covered_n if executed is not None else None,
+        "covered": covered_n if measured else None,
     }
 
 
