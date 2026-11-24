@@ -15,9 +15,9 @@ Degrades honestly, never to fake zeros:
 - no ``.coverage``, or one without per-test contexts → "under a test" cannot
   be told from "at import", so factories are *mapped* with ``executed=None``
   and ``have_coverage`` is False;
-- a factory whose body shares the ``def`` line (``def create_app(): ...``)
-  cannot be measured by line → that one record has ``executed=None`` and is
-  not counted as executed;
+- a factory with no line of its own to measure (its body shares the ``def``
+  line, or is only code that runs later) → that one record has
+  ``executed=None``: unknown, neither executed nor a measured zero;
 - no factories detected → the dimension is absent.
 """
 
@@ -43,10 +43,11 @@ def boot_report(project_root: Path, source_root: Path) -> dict[str, Any]:
     executed_n = 0
     for f in factories:
         record = dict(f)
-        # body lines only, and never the def line: it executes at import
-        # time, which would mark every merely-imported factory as "executed"
-        span = set(range(f.get("body_start", f["line_start"]),
-                         f["line_end"] + 1)) - {f["line_start"]}
+        # only lines that prove the factory itself ran: never the def line
+        # (it executes at import, which would mark every merely-imported
+        # factory as "executed"), never a nested callable's body (a test
+        # calling the returned app would light it up)
+        span = set(f.get("body_lines", []))
         if not measured or contexts is None or not span:
             record.update({"executed": None, "tests": []})
         else:
@@ -65,6 +66,8 @@ def boot_report(project_root: Path, source_root: Path) -> dict[str, Any]:
         "have_coverage": measured,
         "factories": records,
         "total": len(records),
+        "unmeasurable": (sum(1 for r in records if r["executed"] is None)
+                         if measured else None),
         "executed": executed_n if measured else None,
     }
 

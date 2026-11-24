@@ -22,6 +22,7 @@ stays with the filename fallback. See ADR 0003.
 from __future__ import annotations
 
 import ast
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -181,6 +182,39 @@ def _constructs_app(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Optional[str]
     return None
 
 
+def own_statement_lines(stmts: list[ast.stmt]) -> set[int]:
+    """First lines of the statements that run when this block itself runs.
+
+    Used to ask "did a test run this body": a line counts only if running it
+    proves the block ran. So code that runs *later* is left out — the body of
+    a nested function or class, of a lambda, of a generator expression — and
+    so is any line such a body shares (``def one(): return a``, or a
+    statement holding a lambda), because a later call would light it up. The
+    ``def`` / ``class`` statement line itself stays: it runs with the block.
+    """
+    lines: set[int] = set()
+    later: set[int] = set()
+    pending: deque[ast.AST] = deque(stmts)
+    while pending:
+        node = pending.popleft()
+        end = int(getattr(node, "end_lineno", None)
+                  or getattr(node, "lineno", None) or 0)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            lines.add(node.lineno)
+            later.update(range(node.body[0].lineno, end + 1))
+            continue
+        if isinstance(node, ast.Lambda):
+            later.update(range(node.body.lineno, end + 1))
+            continue
+        if isinstance(node, ast.GeneratorExp):
+            later.update(range(node.lineno, end + 1))
+            continue
+        if isinstance(node, ast.stmt):
+            lines.add(node.lineno)
+        pending.extend(ast.iter_child_nodes(node))
+    return lines - later
+
+
 def detect_app_factories(source_root: Path) -> list[dict]:
     """Composition-root candidates: top-level functions with a conventional
     factory name OR that construct a framework app object in their body.
@@ -213,6 +247,11 @@ def detect_app_factories(source_root: Path) -> list[dict]:
                     # executed-join anchor: the def line runs at IMPORT time,
                     # so "was the factory called" must look at BODY lines only
                     "body_start": node.body[0].lineno if node.body else node.lineno,
+                    # the lines that prove the factory itself ran (never the
+                    # def line, never code that runs later: nested defs,
+                    # lambdas, generator expressions)
+                    "body_lines": sorted(
+                        own_statement_lines(node.body) - {node.lineno}),
                     "reason": (f"constructs:{constructed}" if constructed
                                else "factory-name"),
                 })
@@ -220,4 +259,5 @@ def detect_app_factories(source_root: Path) -> list[dict]:
 
 
 __all__ = ["detect_boundary", "detect_framework", "detect_app_factories",
+           "own_statement_lines",
            "CATEGORY_PATTERN"]

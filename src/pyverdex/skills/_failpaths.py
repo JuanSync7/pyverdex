@@ -20,8 +20,9 @@ line numbers, so this module enumerates handlers itself:
   report names *which test forced it*. A handler that only ran at import time
   is not covered. Handler bodies only: the ``except X:`` clause line can
   execute on a type-test without the handler running, so a body written on
-  the clause line (``except X: return 0``) contributes no measurable line
-  and never reads as covered. Without per-test contexts nothing is measured
+  a header line (``except X: return 0``) contributes no measurable line; a
+  boundary whose handlers are all like that is reported as not measurable
+  (``covered`` None), neither covered nor a measured zero. Without per-test contexts nothing is measured
   (``have_coverage`` False, every ``covered`` None).
 - **Scope** — handlers of functions, lambdas and classes *defined inside* the
   boundary belong to those, not to the boundary.
@@ -38,7 +39,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ._contexts import read_test_contexts
-from ._detect import _module_file
+from ._detect import _module_file, own_statement_lines
 from ._edges import _executed_lines_by_module
 
 # Cap worklists embedded in state/report (same rationale as _edges._UNCOVERED_CAP)
@@ -54,9 +55,10 @@ def _handler_line_sets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[i
     they'd otherwise silently vanish from the denominator.
 
     Nested function, lambda and class scopes are not entered: their handlers
-    protect them, not this function. The clause line is never in a set, so a
-    body on the clause line yields an empty set — a handler that exists but
-    cannot be shown covered."""
+    protect them, not this function, and their lines are in no set (a later
+    call would light them up). A set holds only the first lines of the body's
+    own statements. No header line is ever in a set, so a body on a header
+    line yields an empty set — a handler that exists but cannot be measured."""
     handlers: list[set[int]] = []
     pending: deque[ast.AST] = deque(ast.iter_child_nodes(fn))
     while pending:
@@ -67,12 +69,11 @@ def _handler_line_sets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[i
         if not isinstance(node, (ast.Try, ast.TryStar)):
             continue
         for handler in node.handlers:
-            lines: set[int] = set()
-            for stmt in handler.body:
-                end = getattr(stmt, "end_lineno", None) or stmt.lineno
-                lines.update(range(stmt.lineno, end + 1))
-            lines.discard(handler.lineno)
-            handlers.append(lines)
+            # the header may span lines: ``except (\n    ValueError): ...``
+            header_end = (getattr(handler.type, "end_lineno", None)
+                          if handler.type is not None else None) or handler.lineno
+            header = set(range(handler.lineno, header_end + 1))
+            handlers.append(own_statement_lines(handler.body) - header)
     return handlers
 
 
@@ -153,12 +154,17 @@ def failure_path_report(
             for h in covered_handlers:
                 for line in h:
                     forcing.update(mod_ctx.get(line, set()))
-            record.update({
-                "handlers_covered": len(covered_handlers),
-                # any handler exercised => the boundary's failure path was hit
-                "covered": bool(covered_handlers),
-                "forcing_tests": sorted(forcing)[:10],
-            })
+            if any(handlers):
+                record.update({
+                    "handlers_covered": len(covered_handlers),
+                    # any handler exercised => the failure path was hit
+                    "covered": bool(covered_handlers),
+                    "forcing_tests": sorted(forcing)[:10],
+                })
+            else:
+                # no handler has a line of its own: unknown, not a zero
+                record.update({"handlers_covered": None, "covered": None,
+                               "forcing_tests": []})
         protected.append(record)
 
     # `is True`, not truthy: unmeasured records carry covered=None, which must

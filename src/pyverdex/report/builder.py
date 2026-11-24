@@ -437,11 +437,31 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                         "unprotected_sample": unprotected_sample,
                     },
                 ))
+        elif fp.get("have_coverage") and not any(
+                b.get("covered") is not None for b in fp_bnds):
+            # handled boundaries exist but none has a line that can be
+            # measured: unknown, never a measured zero
+            dims.append(DimensionRollup(
+                name="failure-path",
+                status=DimensionStatus.not_run,
+                headline=(f"{failure_paths_total} handled boundaries mapped; "
+                          "none can be measured by line"),
+                detail={
+                    "failure_paths_total": failure_paths_total,
+                    "boundaries_unprotected": boundaries_unprotected,
+                    "unmeasurable_sample": [
+                        f"{b['module']}.{b['function_name']}" for b in fp_bnds[:10]],
+                    "unprotected_sample": unprotected_sample,
+                },
+            ))
         elif fp.get("have_coverage"):
             failure_paths_covered = int(fp.get("covered") or 0)
+            fp_unknown = [b for b in fp_bnds if b.get("covered") is None]
+            # the ratio is over what could be measured
             failure_path_pct = round(
-                failure_paths_covered / failure_paths_total * 100.0, 2)
-            unhit = [b for b in fp_bnds if not b.get("covered")]
+                failure_paths_covered
+                / (failure_paths_total - len(fp_unknown)) * 100.0, 2)
+            unhit = [b for b in fp_bnds if b.get("covered") is False]
             dims.append(DimensionRollup(
                 name="failure-path",
                 # advisory: unexercised error handling warns, never fails
@@ -451,9 +471,13 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
                 headline=(f"{failure_path_pct}% of handled boundaries have an "
                           f"exercised failure path ({failure_paths_covered}/"
                           f"{failure_paths_total})"
+                          + (f"; {len(fp_unknown)} not measurable"
+                             if fp_unknown else "")
                           + (f"; {boundaries_unprotected} boundaries unprotected"
                              if boundaries_unprotected else "")),
                 detail={
+                    "unmeasurable_sample": [f"{b['module']}.{b['function_name']}"
+                                            for b in fp_unknown[:10]],
                     "failure_paths_total": failure_paths_total,
                     "failure_paths_covered": failure_paths_covered,
                     "failure_path_coverage_pct": failure_path_pct,
@@ -485,22 +509,41 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
     app_factories_executed: int | None = None
     if boot.get("total"):
         app_factories_total = int(boot["total"])
-        if boot.get("have_coverage"):
+        boot_facs = boot.get("factories", [])
+        boot_unknown = [f for f in boot_facs if f.get("executed") is None]
+        boot_unknown_sample = [f"{f['module']}.{f['function_name']}"
+                               for f in boot_unknown[:10]]
+        boot_measurable = app_factories_total - len(boot_unknown)
+        if boot.get("have_coverage") and boot_measurable <= 0:
+            # factories exist but none has a line that can be measured:
+            # unknown, never a measured zero
+            dims.append(DimensionRollup(
+                name="boot (composition root)",
+                status=DimensionStatus.not_run,
+                headline=(f"{app_factories_total} app factories mapped; "
+                          "none can be measured by line"),
+                detail={"app_factories_total": app_factories_total,
+                        "unmeasurable_sample": boot_unknown_sample},
+            ))
+        elif boot.get("have_coverage"):
             app_factories_executed = int(boot.get("executed") or 0)
-            unrun = [f for f in boot.get("factories", []) if not f.get("executed")]
+            unrun = [f for f in boot_facs if f.get("executed") is False]
             dims.append(DimensionRollup(
                 name="boot (composition root)",
                 # advisory: an untested factory warns, never fails
                 status=(DimensionStatus.passed
                         if app_factories_executed == app_factories_total
                         else DimensionStatus.warn),
-                headline=(f"{app_factories_executed}/{app_factories_total} app "
-                          "factories executed by tests"),
+                headline=(f"{app_factories_executed}/{boot_measurable} app "
+                          "factories executed by tests"
+                          + (f"; {len(boot_unknown)} not measurable"
+                             if boot_unknown else "")),
                 detail={
                     "app_factories_total": app_factories_total,
                     "app_factories_executed": app_factories_executed,
                     "unexecuted_sample": [f"{f['module']}.{f['function_name']}"
                                           for f in unrun[:10]],
+                    "unmeasurable_sample": boot_unknown_sample,
                 },
             ))
         else:

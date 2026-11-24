@@ -472,7 +472,8 @@ def test_inline_except_body_is_not_covered_by_the_type_test(tmp_path):
     report = _failpaths.failure_path_report(root, root / "src", _BND)
     assert report["have_coverage"] and report["total"] == 1
     assert report["covered"] == 0
-    assert report["boundaries"][0]["covered"] is False
+    # no line of its own to measure: unknown, neither covered nor a zero
+    assert report["boundaries"][0]["covered"] is None
 
 
 def test_handler_run_only_at_import_is_not_covered(tmp_path):
@@ -565,3 +566,150 @@ def test_audit_clears_reports_when_nothing_is_mapped(tmp_path):
         {**_audit_state(cfg), "boot_report": stale, "failure_path_report": stale})
     assert out["boot_report"] is None
     assert out["failure_path_report"] is None
+
+
+# --- second review round -------------------------------------------------------
+
+def test_static_coverage_label_is_not_a_test(tmp_path):
+    """A target's own static coverage context labels import-time lines too;
+    it must not read as a named test."""
+    root = _mini_project(
+        tmp_path,
+        "def create_app():\n    return {}\n\n\n"
+        "def f():\n"
+        "    try:\n"
+        "        return {}['k']\n"
+        "    except KeyError:\n"
+        "        return None\n\n\n"
+        "app = create_app()\nAT_IMPORT = f()\n\n\n"
+        "def other():\n    return 1\n",
+        _USES_OTHER)
+    (root / ".coveragerc").write_text("[run]\ncontext = ci\n", encoding="utf-8")
+    adapters.collect_coverage(root, root / "src", root / "tests", dynamic_contexts=True)
+    br = _boot.boot_report(root, root / "src")
+    assert br["have_coverage"] and br["executed"] == 0
+    assert br["factories"][0]["executed"] is False
+    report = _failpaths.failure_path_report(root, root / "src", _BND)
+    assert report["have_coverage"] and report["covered"] == 0
+    assert report["boundaries"][0]["covered"] is False
+
+
+def test_boot_nested_callable_run_by_a_test_does_not_credit_the_factory(tmp_path):
+    root = _mini_project(
+        tmp_path,
+        "def create_app():\n"
+        "    def app():\n"
+        "        return 1\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+        "from svc.mod import app\n\n"
+        "def test_app():\n    assert app() == 1\n")
+    adapters.collect_coverage(root, root / "src", root / "tests", dynamic_contexts=True)
+    br = _boot.boot_report(root, root / "src")
+    assert br["have_coverage"] and br["executed"] == 0
+    assert br["factories"][0]["executed"] is False
+
+
+def test_nested_callable_in_handler_does_not_cover_the_outer_handler(tmp_path):
+    root = _mini_project(
+        tmp_path,
+        "def f():\n"
+        "    try:\n"
+        "        return {}['missing']\n"
+        "    except KeyError:\n"
+        "        def recover():\n"
+        "            try:\n"
+        "                return {}['missing']\n"
+        "            except KeyError:\n"
+        "                return 1\n"
+        "        return recover\n\n\n"
+        "recover = f()\n",
+        "from svc.mod import recover\n\n"
+        "def test_recover():\n    assert recover() == 1\n")
+    adapters.collect_coverage(root, root / "src", root / "tests", dynamic_contexts=True)
+    report = _failpaths.failure_path_report(root, root / "src", _BND)
+    assert report["have_coverage"] and report["total"] == 1
+    assert report["boundaries"][0]["covered"] is False
+
+
+def test_multiline_except_header_is_not_a_handler_line(tmp_path):
+    root = _mini_project(
+        tmp_path,
+        "def f(dep):\n"
+        "    try:\n"
+        "        return dep()\n"
+        "    except (\n"
+        "        ValueError): return 0\n",
+        "import pytest\nfrom svc.mod import f\n\n"
+        "def _boom():\n    raise TypeError()\n\n"
+        "def test_f():\n    with pytest.raises(TypeError):\n        f(_boom)\n")
+    adapters.collect_coverage(root, root / "src", root / "tests", dynamic_contexts=True)
+    report = _failpaths.failure_path_report(root, root / "src", _BND)
+    assert report["have_coverage"] and report["covered"] == 0
+    assert report["boundaries"][0]["covered"] is None
+
+
+def test_own_statement_lines_exclude_code_that_runs_later():
+    import ast as _ast
+    fn = _ast.parse(
+        "def create_app(xs):\n"          # 1
+        "    a = 1\n"                    # 2  own
+        "    g = (x for x in xs)\n"      # 3  generator body runs when iterated
+        "    h = lambda: a\n"            # 4  lambda body runs when called
+        "    def inner():\n"             # 5  own: the def statement runs here
+        "        return a\n"             # 6  runs when inner() is called
+        "    def one(): return a\n"      # 7  body shares the line
+        "    if a:\n"                    # 8  own
+        "        a = 2\n"                # 9  own
+        "    return inner\n"             # 10 own
+    ).body[0]
+    assert _detect.own_statement_lines(fn.body) == {2, 5, 8, 9, 10}
+
+
+def test_builder_boot_unmeasurable_factory_is_not_a_measured_zero():
+    fac = {"module": "a.wiring", "function_name": "create_app", "line_start": 1,
+           "line_end": 1, "reason": "factory-name", "executed": None, "tests": []}
+    state = _builder_state(boot_report={
+        "have_coverage": True, "total": 1, "executed": 0, "factories": [fac]})
+    report = build_unified_report(state, Config())
+    assert report.app_factories_total == 1
+    assert report.app_factories_executed is None
+    dim = next(d for d in report.dimensions if d.name.startswith("boot"))
+    assert dim.status is DimensionStatus.not_run
+    assert dim.detail["unmeasurable_sample"] == ["a.wiring.create_app"]
+
+    ran = {**fac, "module": "b.wiring", "line_end": 2, "executed": True,
+           "tests": ["test_boot.test_it"]}
+    state = _builder_state(boot_report={
+        "have_coverage": True, "total": 2, "executed": 1, "factories": [fac, ran]})
+    report = build_unified_report(state, Config())
+    assert report.app_factories_executed == 1
+    dim = next(d for d in report.dimensions if d.name.startswith("boot"))
+    assert dim.status is DimensionStatus.warn  # one could not be measured
+    assert dim.detail["unexecuted_sample"] == []
+    assert dim.detail["unmeasurable_sample"] == ["a.wiring.create_app"]
+
+
+def test_builder_failure_path_unmeasurable_boundary_is_not_a_measured_zero():
+    unknown = {"module": "m", "function_name": "inline", "handlers_total": 1,
+               "handlers_covered": None, "covered": None, "forcing_tests": []}
+    state = _builder_state(failure_path_report={
+        "have_coverage": True, "total": 1, "covered": 0,
+        "unprotected_total": 0, "unprotected": [], "boundaries": [unknown]})
+    report = build_unified_report(state, Config())
+    assert report.failure_path_coverage_pct is None
+    dim = next(d for d in report.dimensions if d.name == "failure-path")
+    assert dim.status is DimensionStatus.not_run
+    assert dim.detail["unmeasurable_sample"] == ["m.inline"]
+
+    hit = {"module": "m", "function_name": "ok", "handlers_total": 1,
+           "handlers_covered": 1, "covered": True, "forcing_tests": ["t.test_x"]}
+    state = _builder_state(failure_path_report={
+        "have_coverage": True, "total": 2, "covered": 1,
+        "unprotected_total": 0, "unprotected": [], "boundaries": [unknown, hit]})
+    report = build_unified_report(state, Config())
+    assert report.failure_path_coverage_pct == 100.0  # 1 of 1 measurable
+    dim = next(d for d in report.dimensions if d.name == "failure-path")
+    assert dim.status is DimensionStatus.warn  # one could not be measured
+    assert dim.detail["uncovered_sample"] == []
+    assert dim.detail["unmeasurable_sample"] == ["m.inline"]

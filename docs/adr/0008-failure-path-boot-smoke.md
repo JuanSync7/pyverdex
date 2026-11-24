@@ -55,9 +55,16 @@ the exception*.
    - *Numerator* — a boundary's failure path is covered when a named test
      executed a handler-body line (per-test contexts); the report names the
      forcing test(s). A handler that only ran at import time is not covered.
-     A body written on the clause line (``except X: return 0``) has no
-     measurable line and never reads as covered. Without per-test contexts
-     nothing is measured: the dimension is not-run, never a ratio.
+     Only the first lines of the handler body's own statements count: no
+     header line (a header may span lines), and no line of code that runs
+     later (a nested function, class, lambda or generator expression), since
+     a later call would light it up. A boundary whose handlers have no such
+     line (``except X: return 0``) is *not measurable*: neither covered nor
+     a measured zero, left out of the ratio and listed by name. A static
+     coverage label set by the target (``context = ...``) is dropped for the
+     run, because it would stamp import-time lines as if a test ran them.
+     Without per-test contexts nothing is measured: the dimension is
+     not-run, never a ratio.
    - Handlers of functions, lambdas and classes defined *inside* the boundary
      belong to those, not to the boundary.
    - A measured run in which no boundary has a handler still reports: the
@@ -71,10 +78,13 @@ the exception*.
    (FastAPI/Flask/Starlette/Celery/Typer). A factory is *executed* when a
    named test ran a **body** line (per-test contexts) — the ``def`` line
    executes at import time and must not count, and neither does a
-   module-level call such as ``app = create_app()``. A factory whose body
-   shares the ``def`` line cannot be measured by line and is reported as
-   not measured, never as executed. Without per-test contexts the dimension
-   is not-run.
+   module-level call such as ``app = create_app()``. The same line rule as
+   for handlers applies: a route or helper defined inside the factory and
+   called later by a test does not show the factory ran. A factory with no
+   line of its own to measure is *not measurable*: listed by name, never
+   executed and never a measured zero; when no factory is measurable the
+   dimension is not-run. Without per-test contexts the dimension is
+   not-run.
    Module-level ``app = FastAPI()`` wiring executes at import and is already
    the import-smoke sweep's job; only functions are detected. Vendored /
    third-party trees (vendored, node_modules, venvs) are skipped — you don't
