@@ -15,6 +15,7 @@ checkpointer + ``Command(resume=...)``.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Hashable
 
 from langgraph.graph import END, START, StateGraph
 
@@ -83,7 +84,7 @@ def build_engine(config: Config, checkpointer=None, backend=None):
             return "generate"
         return _post_audit_entry(config)
 
-    targets = {"report": "report"}
+    targets: dict[Hashable, str] = {"report": "report"}
     if gen_on:
         targets["generate"] = "generate"
     if eval_on:

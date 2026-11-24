@@ -102,6 +102,8 @@ def build_generate_graph(config: Config, backend: LLMBackend | None = None):
         )
         if feedback:
             prompt += f"\n\nThe previous attempt was rejected: {feedback}"
+        if backend is None:
+            raise RuntimeError("generate/author: called with no LLM backend")
         return _strip_code(backend.invoke(prompt, system=system))
 
     # ---- nodes ----------------------------------------------------------

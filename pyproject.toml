@@ -42,6 +42,10 @@ pyverdex = "pyverdex.cli:main"
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.mypy]
+# pydantic models (ours and langchain's) take field names, not aliases
+plugins = ["pydantic.mypy"]
+
 [tool.ruff]
 line-length = 100
 extend-exclude = ["src/pyverdex/tools/vendored", "examples"]
@@ -52,3 +56,8 @@ package = true
 [build-system]
 requires = ["uv_build>=0.11.7,<0.12.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "types-pyyaml>=6.0.12.20261122",
+]

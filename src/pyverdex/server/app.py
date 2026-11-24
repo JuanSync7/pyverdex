@@ -115,7 +115,9 @@ def create_app(
         return origin.rstrip("/") in extra_origins
 
     def _check_token(supplied: Optional[str]) -> bool:
-        return bool(supplied) and secrets.compare_digest(supplied, token)
+        if not supplied:
+            return False
+        return secrets.compare_digest(supplied, token)
 
     def require_auth(
         request: Request,
