@@ -13,7 +13,7 @@ canonical: true
 ---
 # 0009 — pyverdex as the Python verification frontend over packaged playbooks
 
-- **Status:** proposed (rulings R1–R21 are the owner's; P2–P5 and P7 are proposals awaiting a ruling)
+- **Status:** proposed (rulings R1–R22 are the owner's; P2–P5 and P7 are proposals awaiting a ruling)
 - **Date:** 2026-11-24
 
 ## Context
@@ -95,6 +95,9 @@ Python be confident in code an agent implemented.
   version until it pulls a newer one. A pyverdex release names the pack version
   it ships. Issues found in the pack here go back to its source by pull
   request; that step is manual, because the source is personal.
+- **R22** The tests of the pack's checks and tools live beside them in the
+  pack, are pulled with it, and run in this repo's `make verify`. A check or
+  tool with no test of its own fails the gate.
 - **R21** Order of work: a baseline, then land or park PR #15, then adopt the
   current Keel template (rehearsed on a throwaway copy), then start the
   project ledger, then S1.

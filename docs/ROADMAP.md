@@ -33,7 +33,7 @@ be confident in code an agent implemented.
 | Q7 | The split. | **Ruled (R17):** same product, different offerings; the hard files sit in the playbook with no duplicate. Conditions proposed in ADR P5. | S0b, S5 |
 | Q8 | Existing code with no written expectations. | **Ruled (R18, R19):** a new author sees only the interface and the owner's answers; three interface guards. | S4 |
 | Q9 | Keel and the project ledger: when? | **Ruled (R21):** baseline, PR #15, Keel adoption (rehearsed on a copy), ledger, then S1. The ledger is private and stays outside this public repo. | S1 onward |
-| Q10 | Where do the tests of the pack's checks and tools live? | Predicted: beside them in the pack, pulled with it, and run by this repo's `make verify`; a check or tool with no test of its own fails the gate. | S0b, S2 |
+| Q10 | Where do the tests of the pack's checks and tools live? | **Ruled (R22):** beside them in the pack, pulled with it, run by `make verify`; none means the gate fails. | S0b, S2 |
 
 ## Slices (persistent formats first)
 
