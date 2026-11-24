@@ -13,7 +13,7 @@ canonical: true
 ---
 # 0009 — pyverdex as the Python verification frontend over packaged playbooks
 
-- **Status:** proposed (rulings R1–R22 are the owner's; P2–P5 and P7 are proposals awaiting a ruling)
+- **Status:** proposed (rulings R1–R24 are the owner's; P2–P4 are proposals awaiting a ruling)
 - **Date:** 2026-11-24
 
 ## Context
@@ -101,6 +101,19 @@ Python be confident in code an agent implemented.
 - **R21** Order of work: a baseline, then land or park PR #15, then adopt the
   current Keel template (rehearsed on a throwaway copy), then start the
   project ledger, then S1.
+- **R23 What "no duplicate" needs (R17; was P5).** This repo carries a
+  committed copy of the playbook folder, as a clone carries a copy of its remote (R3 forbids
+  needing the source at run time). It stays one home only if (a) the engine
+  runs the tools from that folder and keeps no second copy under `src/`,
+  (b) a change here goes back by pull request, and (c) a tool that several
+  playbooks need has one shared place in the pack, not a copy per playbook.
+  A tool carries its own safety (mutation works on a copy and refuses to edit
+  in place), because a host that runs it alone has no pyverdex sandbox. A tool
+  runs under the interpreter of the project being tested, so it may need only
+  the standard library and that project's own test tools; anything else it
+  needs fails closed as a configuration error.
+- **R24 Interface extraction is deterministic (R18; was P7).** No model reads
+  the code to produce the interface: names and types, no bodies.
 
 ## Proposals (not yet ruled)
 
@@ -118,24 +131,10 @@ Python be confident in code an agent implemented.
   config, thresholds or coverage exclusions, or delete tests; a check holds each.
 - **P4 Freeze.** No new LLM-loop features (Phase L) until roadmap slices S1–S4
   land. Measurement work (Phase I, PR #15) is unaffected.
-- **P5 What "no duplicate" needs (R17).** This repo carries a committed copy
-  of the playbook folder, as a clone carries a copy of its remote (R3 forbids
-  needing the source at run time). It stays one home only if (a) the engine
-  runs the tools from that folder and keeps no second copy under `src/`,
-  (b) a change here goes back by pull request, and (c) a tool that several
-  playbooks need has one shared place in the pack, not a copy per playbook.
-  A tool carries its own safety (mutation works on a copy and refuses to edit
-  in place), because a host that runs it alone has no pyverdex sandbox. A tool
-  runs under the interpreter of the project being tested, so it may need only
-  the standard library and that project's own test tools; anything else it
-  needs fails closed as a configuration error.
-- **P7 Interface extraction is deterministic (R18).** No model reads the code
-  to produce the interface: names and types, no bodies.
 
 ## Open questions
 
-1. P5 and P7 await a ruling.
-2. A test written from an approved expectation may fail on existing code. That
+1. A test written from an approved expectation may fail on existing code. That
    is a finding ("you said X, the code does Y"), not a bad test. R9 assumed
    such tests pass; the evidence format needs a state for it and the loop must
    keep the test (roadmap S1).

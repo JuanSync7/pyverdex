@@ -30,7 +30,7 @@ be confident in code an agent implemented.
 | Q4 | Own the measuring tools? | **Ruled (R11, R17):** yes; their one home is the playbook pack; retire the sync script. | S0b |
 | Q5 | Quarantine and nightly-only tests? | **Ruled (R10):** drop both. | — |
 | Q6 | Label results "derived from code"? | **Ruled (R13):** no such category; tests never come from code. | S1 |
-| Q7 | The split. | **Ruled (R17):** same product, different offerings; the hard files sit in the playbook with no duplicate. Conditions proposed in ADR P5. | S0b, S5 |
+| Q7 | The split. | **Ruled (R17):** same product, different offerings; the hard files sit in the playbook with no duplicate. Conditions ruled in R23. | S0b, S5 |
 | Q8 | Existing code with no written expectations. | **Ruled (R18, R19):** a new author sees only the interface and the owner's answers; three interface guards. | S4 |
 | Q9 | Keel and the project ledger: when? | **Ruled (R21):** baseline, PR #15, Keel adoption (rehearsed on a copy), ledger, then S1. The ledger is private and stays outside this public repo. | S1 onward |
 | Q10 | Where do the tests of the pack's checks and tools live? | **Ruled (R22):** beside them in the pack, pulled with it, run by `make verify`; none means the gate fails. | S0b, S2 |
@@ -43,7 +43,7 @@ farm inside the isolation wrapper (the suite runs the real mutation tool).
 Record the result. Land or park PR #15: it changes the files S1 to S4 change.
 This needs no open decision.
 
-**S0b — The tools' one home (R17, ADR P5).** Move the ten tools, byte for
+**S0b — The tools' one home (R17, R23).** Move the ten tools, byte for
 byte, to their home in the playbook pack and run them from the copy this repo
 carries; retire the sync script; change `.gitignore`, the structure checker's
 exclusions and the agent rule files together. Only then, as its own change,
@@ -78,7 +78,7 @@ and the interface, never the implementation.
 the verdicts, a cycle or spend cap, or a stall, with the reason written down.
 The mode that writes tests from coverage gaps is removed. For existing code:
 extract the interface (no model), ask the owner plain-language questions,
-turn surviving mutants into neutral questions (ADR P6).
+turn surviving mutants into neutral questions (R19).
 
 **S5 — Playbooks by pull request.** Pull the Python playbooks into this repo
 (redacted) and push changes back to their source, both as pull requests. Fill
@@ -105,7 +105,16 @@ to S4 land (ADR P4).
   run** (no `node_modules`, and the target passes by skipping). So
   `make verify` is red on main. PR #15's branch gives the same four results
   (pytest exit 0; its test count was not captured), so it adds no failure.
+- **PR #15 reviewed, not merged.** An independent review failed it with six
+  findings of a false pass. Four were reproduced on throwaway projects: a
+  one-line factory that is only imported reads as executed; a factory called
+  at import reads as executed by a test; an `except` body on the clause line
+  reads as exercised when only the type test ran; a nested helper's handler
+  is credited to the enclosing boundary. Two were confirmed by reading: a
+  report with only unprotected boundaries says "no coverage data" and drops
+  their names; an empty later scan leaves the earlier passing report in the
+  state.
 
-- ADR 0009 drafted (status: proposed); rulings R1 to R19 recorded.
+- ADR 0009 drafted (status: proposed); rulings R1 to R24 recorded.
 - Read-only audits of both sides: the older test skills against the current
   playbooks, and this code against the playbook check contract.
