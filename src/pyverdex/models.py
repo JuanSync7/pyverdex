@@ -327,6 +327,18 @@ class UnifiedCoverageReport(BaseModel):
     boundaries_real_covered: int = 0
     boundaries_mock_only: int = 0
     boundary_realness_pct: Optional[float] = None
+    # failure-path coverage (Phase I): handled boundaries whose except-handler
+    # bodies executed under some test; unprotected = boundaries with NO error
+    # handling at all (excluded from the ratio, surfaced as a worklist).
+    # pct None when unmeasured (no .coverage) — mapped is not measured.
+    failure_path_coverage_pct: Optional[float] = None
+    failure_paths_total: int = 0
+    failure_paths_covered: int = 0
+    boundaries_unprotected: int = 0
+    # boot smoke (Phase I): composition-root factories executed by any test.
+    # executed None (not 0) when there is no coverage data.
+    app_factories_total: int = 0
+    app_factories_executed: Optional[int] = None
     # log-path coverage (fraction of branch nodes that emit a log) — surfaced from
     # the log_contract_validator report; None when that report is absent
     log_path_coverage_pct: Optional[float] = None

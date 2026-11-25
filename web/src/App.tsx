@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  api, Dimension, edgeLabel, fetchSession, FunctionCoverage, getApiBase, ProjectInfo,
-  Report, sampleReportUrl, setApiBase, STATIC_DEMO, systemLabel,
+  api, Dimension, edgeLabel, failurePathLabel, fetchSession, FunctionCoverage,
+  getApiBase, ProjectInfo, Report, sampleReportUrl, setApiBase, STATIC_DEMO,
+  systemLabel,
 } from "./api";
 import { Terminal } from "./Terminal";
 
@@ -211,6 +212,7 @@ export function App() {
             </span>
             <span>{edgeLabel(report)}</span>
             {systemLabel(report) && <span>{systemLabel(report)}</span>}
+            {failurePathLabel(report) && <span>{failurePathLabel(report)}</span>}
             <span>mutation {report.mutation_kill_rate === null ? "—" : `${Math.round(report.mutation_kill_rate * 100)}%`}</span>
             <span>{report.weak_tests} weak tests</span>
           </section>

@@ -62,6 +62,15 @@ export interface Report {
   boundaries_real_covered: number;
   boundaries_mock_only: number;
   boundary_realness_pct: number | null;
+  // failure-path coverage (Phase I): handled boundaries whose except-handlers
+  // executed under some test; unprotected = no error handling at all.
+  failure_path_coverage_pct: number | null;
+  failure_paths_total: number;
+  failure_paths_covered: number;
+  boundaries_unprotected: number;
+  // boot smoke: composition-root factories executed by tests (null = no data)
+  app_factories_total: number;
+  app_factories_executed: number | null;
   log_path_coverage_pct: number | null;
   mutation_kill_rate: number | null;
   weak_tests: number;
@@ -95,6 +104,17 @@ export function systemLabel(r: Report): string | null {
   }
   const p = r.boundary_coverage_pct === null ? "—" : `${r.boundary_coverage_pct}%`;
   return `system ${p} (${r.boundaries_covered}/${r.boundaries_total}${execOnly})`;
+}
+
+/** Verdict-row failure-path label: exercised error handling across handled
+ * boundaries. Null when nothing was mapped; "mapped" form when unmeasured. */
+export function failurePathLabel(r: Report): string | null {
+  if (r.failure_paths_total <= 0 && r.boundaries_unprotected <= 0) return null;
+  const unprot = r.boundaries_unprotected > 0 ? `, ${r.boundaries_unprotected} unprotected` : "";
+  if (r.failure_path_coverage_pct === null) {
+    return `fail-paths ${r.failure_paths_total} mapped${unprot}`;
+  }
+  return `fail-paths ${r.failure_path_coverage_pct}% (${r.failure_paths_covered}/${r.failure_paths_total}${unprot})`;
 }
 
 // Static-demo build (GitHub Pages): no backend, render a bundled sample report.

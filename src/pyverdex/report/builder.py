@@ -407,6 +407,154 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
             },
         ))
 
+    # --- failure-path coverage: are boundary except-handlers exercised? --------
+    fp = state.get("failure_path_report") or {}
+    failure_paths_total = 0
+    failure_paths_covered = 0
+    boundaries_unprotected = 0
+    failure_path_pct: float | None = None
+    if fp:
+        failure_paths_total = int(fp.get("total") or 0)
+        boundaries_unprotected = int(fp.get("unprotected_total") or 0)
+        fp_bnds = fp.get("boundaries", [])
+        unprotected_sample = [f"{u['module']}.{u['function_name']}"
+                              for u in fp.get("unprotected", [])[:10]]
+        if fp.get("have_coverage") and not failure_paths_total:
+            if boundaries_unprotected:
+                # measured, but no boundary has a handler: no ratio to take,
+                # the worklist of unprotected boundaries is the whole signal
+                dims.append(DimensionRollup(
+                    name="failure-path",
+                    status=DimensionStatus.warn,
+                    headline=(f"no boundary has error handling; "
+                              f"{boundaries_unprotected} boundaries unprotected"),
+                    detail={
+                        "failure_paths_total": 0,
+                        "failure_paths_covered": 0,
+                        "failure_path_coverage_pct": None,
+                        "boundaries_unprotected": boundaries_unprotected,
+                        "uncovered_sample": [],
+                        "unprotected_sample": unprotected_sample,
+                    },
+                ))
+        elif fp.get("have_coverage") and not any(
+                b.get("covered") is not None for b in fp_bnds):
+            # handled boundaries exist but none has a line that can be
+            # measured: unknown, never a measured zero
+            dims.append(DimensionRollup(
+                name="failure-path",
+                status=DimensionStatus.not_run,
+                headline=(f"{failure_paths_total} handled boundaries mapped; "
+                          "none can be measured by line"),
+                detail={
+                    "failure_paths_total": failure_paths_total,
+                    "boundaries_unprotected": boundaries_unprotected,
+                    "unmeasurable_sample": [
+                        f"{b['module']}.{b['function_name']}" for b in fp_bnds[:10]],
+                    "unprotected_sample": unprotected_sample,
+                },
+            ))
+        elif fp.get("have_coverage"):
+            failure_paths_covered = int(fp.get("covered") or 0)
+            fp_unknown = [b for b in fp_bnds if b.get("covered") is None]
+            # the ratio is over what could be measured
+            failure_path_pct = round(
+                failure_paths_covered
+                / (failure_paths_total - len(fp_unknown)) * 100.0, 2)
+            unhit = [b for b in fp_bnds if b.get("covered") is False]
+            dims.append(DimensionRollup(
+                name="failure-path",
+                # advisory: unexercised error handling warns, never fails
+                status=(DimensionStatus.passed
+                        if failure_paths_covered == failure_paths_total
+                        else DimensionStatus.warn),
+                headline=(f"{failure_path_pct}% of handled boundaries have an "
+                          f"exercised failure path ({failure_paths_covered}/"
+                          f"{failure_paths_total})"
+                          + (f"; {len(fp_unknown)} not measurable"
+                             if fp_unknown else "")
+                          + (f"; {boundaries_unprotected} boundaries unprotected"
+                             if boundaries_unprotected else "")),
+                detail={
+                    "unmeasurable_sample": [f"{b['module']}.{b['function_name']}"
+                                            for b in fp_unknown[:10]],
+                    "failure_paths_total": failure_paths_total,
+                    "failure_paths_covered": failure_paths_covered,
+                    "failure_path_coverage_pct": failure_path_pct,
+                    "boundaries_unprotected": boundaries_unprotected,
+                    # worklists: force these exception paths next / add handling
+                    "uncovered_sample": [f"{b['module']}.{b['function_name']}"
+                                         for b in unhit[:10]],
+                    "unprotected_sample": unprotected_sample,
+                },
+            ))
+        elif failure_paths_total or boundaries_unprotected:
+            # mapped but not measured (no per-test coverage data) — honest
+            # not_run, no zeros
+            dims.append(DimensionRollup(
+                name="failure-path",
+                status=DimensionStatus.not_run,
+                headline=(f"{failure_paths_total} handled boundaries mapped "
+                          "(no per-test coverage data)"
+                          + (f"; {boundaries_unprotected} unprotected"
+                             if boundaries_unprotected else "")),
+                detail={"failure_paths_total": failure_paths_total,
+                        "boundaries_unprotected": boundaries_unprotected,
+                        "unprotected_sample": unprotected_sample},
+            ))
+
+    # --- boot smoke: is the composition root constructed by any test? ---------
+    boot = state.get("boot_report") or {}
+    app_factories_total = 0
+    app_factories_executed: int | None = None
+    if boot.get("total"):
+        app_factories_total = int(boot["total"])
+        boot_facs = boot.get("factories", [])
+        boot_unknown = [f for f in boot_facs if f.get("executed") is None]
+        boot_unknown_sample = [f"{f['module']}.{f['function_name']}"
+                               for f in boot_unknown[:10]]
+        boot_measurable = app_factories_total - len(boot_unknown)
+        if boot.get("have_coverage") and boot_measurable <= 0:
+            # factories exist but none has a line that can be measured:
+            # unknown, never a measured zero
+            dims.append(DimensionRollup(
+                name="boot (composition root)",
+                status=DimensionStatus.not_run,
+                headline=(f"{app_factories_total} app factories mapped; "
+                          "none can be measured by line"),
+                detail={"app_factories_total": app_factories_total,
+                        "unmeasurable_sample": boot_unknown_sample},
+            ))
+        elif boot.get("have_coverage"):
+            app_factories_executed = int(boot.get("executed") or 0)
+            unrun = [f for f in boot_facs if f.get("executed") is False]
+            dims.append(DimensionRollup(
+                name="boot (composition root)",
+                # advisory: an untested factory warns, never fails
+                status=(DimensionStatus.passed
+                        if app_factories_executed == app_factories_total
+                        else DimensionStatus.warn),
+                headline=(f"{app_factories_executed}/{boot_measurable} app "
+                          "factories executed by tests"
+                          + (f"; {len(boot_unknown)} not measurable"
+                             if boot_unknown else "")),
+                detail={
+                    "app_factories_total": app_factories_total,
+                    "app_factories_executed": app_factories_executed,
+                    "unexecuted_sample": [f"{f['module']}.{f['function_name']}"
+                                          for f in unrun[:10]],
+                    "unmeasurable_sample": boot_unknown_sample,
+                },
+            ))
+        else:
+            dims.append(DimensionRollup(
+                name="boot (composition root)",
+                status=DimensionStatus.not_run,
+                headline=(f"{app_factories_total} app factories mapped "
+                          "(no per-test coverage data)"),
+                detail={"app_factories_total": app_factories_total},
+            ))
+
     # --- log-path coverage (collected by audit, previously never surfaced) -----
     logc = state.get("log_contract_report") or {}
     log_path_pct: float | None = None
@@ -505,6 +653,12 @@ def build_unified_report(state: EngineState, config: Config) -> UnifiedCoverageR
         boundaries_real_covered=boundaries_real_covered,
         boundaries_mock_only=boundaries_mock_only,
         boundary_realness_pct=realness_pct,
+        failure_path_coverage_pct=failure_path_pct,
+        failure_paths_total=failure_paths_total,
+        failure_paths_covered=failure_paths_covered,
+        boundaries_unprotected=boundaries_unprotected,
+        app_factories_total=app_factories_total,
+        app_factories_executed=app_factories_executed,
         log_path_coverage_pct=log_path_pct,
         integration_tests_written=int_written,
         integration_tests_passed=int_passed,

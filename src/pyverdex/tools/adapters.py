@@ -186,6 +186,9 @@ def _contexts_rcfile(project_root: Path) -> Path:
     project_root = Path(project_root).resolve()
     options = _target_run_options(project_root)
     options["dynamic_context"] = "test_function"  # ours wins over any target value
+    # a static label is stamped on import-time lines too, and every line with
+    # a label is read as "a test ran this" — so the target's own is dropped
+    options.pop("context", None)
     lines = ["[run]"]
     for key, value in options.items():
         lines.append(f"{key} = " + value.replace("\n", "\n    "))
