@@ -55,12 +55,29 @@ the exception*.
    - *Numerator* — a boundary's failure path is covered when a named test
      executed a handler-body line (per-test contexts); the report names the
      forcing test(s). A handler that only ran at import time is not covered.
-     Only the first lines of the handler body's own statements count: no
-     header line (a header may span lines), and no line of code that runs
-     later (a nested function, class, lambda or generator expression), since
-     a later call would light it up. A boundary whose handlers have no such
-     line (``except X: return 0``) is *not measurable*: neither covered nor
-     a measured zero, left out of the ratio and listed by name. A static
+     Which lines count is read from the compiler's own line tables
+     (`skills/_lines.py`; the source is compiled, never executed), not
+     predicted from the syntax tree: a line counts for a handler only when
+     the boundary function's code is the *only* code that can emit it and it
+     lies in the handler body past the header. That leaves out a header line
+     (the type test runs it without entering the body) and any line shared
+     with code that runs later (a nested function, class, lambda,
+     comprehension, or a lambda used as a default). Each handler gets one of
+     three verdicts: *ran* (a named test ran such a line), *did not run*
+     (none ran, and the first line the body emits is itself such a line, so
+     entering the body would have been seen), or *unknown* (everything
+     else, e.g. ``except X: return 0``). A boundary is covered when any
+     handler ran, a measured zero only when every handler did not run, and
+     otherwise *not measurable*: left out of the ratio and listed by name.
+     The price: a handler or factory whose first line is shared (it opens
+     with a nested ``def``, or with a statement holding a lambda) can be
+     reported as run but never as a measured zero. The rule is checked
+     against a real tracer over generated bodies
+     (`tests/test_phase_i_line_anchors.py`). Line tables belong to the
+     interpreter that compiles them, so the audit must run on the same
+     Python version as the measured run (it does: one environment runs both).
+     A module the target leaves out of measurement (``omit``) is unknown,
+     not zero; a module no test imports is still measured, as a zero. A static
      coverage label set by the target (``context = ...``) is dropped for the
      run, because it would stamp import-time lines as if a test ran them.
      Without per-test contexts nothing is measured: the dimension is
@@ -78,11 +95,11 @@ the exception*.
    (FastAPI/Flask/Starlette/Celery/Typer). A factory is *executed* when a
    named test ran a **body** line (per-test contexts) — the ``def`` line
    executes at import time and must not count, and neither does a
-   module-level call such as ``app = create_app()``. The same line rule as
-   for handlers applies: a route or helper defined inside the factory and
-   called later by a test does not show the factory ran. A factory with no
-   line of its own to measure is *not measurable*: listed by name, never
-   executed and never a measured zero; when no factory is measurable the
+   module-level call such as ``app = create_app()``. The same line rule and
+   the same three verdicts as for handlers apply: a route or helper defined
+   inside the factory and called later by a test does not show the factory
+   ran. A factory that cannot be judged is *not measurable*: listed by name,
+   never executed and never a measured zero; when no factory is measurable the
    dimension is not-run. Without per-test contexts the dimension is
    not-run.
    Module-level ``app = FastAPI()`` wiring executes at import and is already

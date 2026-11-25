@@ -18,12 +18,13 @@ line numbers, so this module enumerates handlers itself:
 - **Numerator** — a boundary's failure path is *covered* when a named test
   executed one of its handler-body lines (per-test contexts, Phase H); the
   report names *which test forced it*. A handler that only ran at import time
-  is not covered. Handler bodies only: the ``except X:`` clause line can
-  execute on a type-test without the handler running, so a body written on
-  a header line (``except X: return 0``) contributes no measurable line; a
-  boundary whose handlers are all like that is reported as not measurable
-  (``covered`` None), neither covered nor a measured zero. Without per-test contexts nothing is measured
-  (``have_coverage`` False, every ``covered`` None).
+  is not covered. Only lines that the handler body alone can emit count
+  (``_lines``): never a header line, which the type test runs without
+  entering the body, and never a line shared with code that runs later. A
+  boundary is a measured zero only when every handler could be judged and
+  none ran; if one cannot be judged (``except X: return 0``) and none is
+  known to have run, ``covered`` is None. Without per-test contexts, or for
+  a module the target leaves out of measurement, nothing is measured.
 - **Scope** — handlers of functions, lambdas and classes *defined inside* the
   boundary belong to those, not to the boundary.
 
@@ -38,9 +39,10 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Optional
 
-from ._contexts import read_test_contexts
-from ._detect import _module_file, own_statement_lines
+from ._contexts import measured_modules, read_test_contexts
+from ._detect import _module_file
 from ._edges import _executed_lines_by_module
+from ._lines import Anchors, ModuleCode, judge
 
 # Cap worklists embedded in state/report (same rationale as _edges._UNCOVERED_CAP)
 _SAMPLE_CAP = 50
@@ -48,67 +50,73 @@ _SAMPLE_CAP = 50
 _NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
-def _handler_line_sets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[int]]:
-    """One line-set per except-handler *body* within the function (recursive:
-    nested trys — including inside handler bodies — contribute their own).
+def _handlers(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.ExceptHandler]:
+    """The except-handlers that protect this function (recursive: nested
+    trys — including inside handler bodies — contribute their own).
     ``except*`` exception-group handlers (ast.TryStar, PEP 654) count too —
     they'd otherwise silently vanish from the denominator.
 
     Nested function, lambda and class scopes are not entered: their handlers
-    protect them, not this function, and their lines are in no set (a later
-    call would light them up). A set holds only the first lines of the body's
-    own statements. No header line is ever in a set, so a body on a header
-    line yields an empty set — a handler that exists but cannot be measured."""
-    handlers: list[set[int]] = []
+    protect them, not this function."""
+    found: list[ast.ExceptHandler] = []
     pending: deque[ast.AST] = deque(ast.iter_child_nodes(fn))
     while pending:
         node = pending.popleft()
         if isinstance(node, _NESTED_SCOPES):
             continue
         pending.extend(ast.iter_child_nodes(node))
-        if not isinstance(node, (ast.Try, ast.TryStar)):
-            continue
-        for handler in node.handlers:
-            # the header may span lines: ``except (\n    ValueError): ...``
-            header_end = (getattr(handler.type, "end_lineno", None)
-                          if handler.type is not None else None) or handler.lineno
-            header = set(range(handler.lineno, header_end + 1))
-            handlers.append(own_statement_lines(handler.body) - header)
-    return handlers
+        if isinstance(node, (ast.Try, ast.TryStar)):
+            found.extend(node.handlers)
+    return found
+
+
+def boundary_verdict(handlers: list[Optional[bool]]) -> Optional[bool]:
+    """One boundary from its handlers' verdicts: covered when any handler
+    ran under a test; a measured zero only when *every* handler could be
+    judged and none ran; otherwise unknown (the handler that cannot be judged
+    may be the one a test ran)."""
+    if any(v is True for v in handlers):
+        return True
+    if handlers and all(v is False for v in handlers):
+        return False
+    return None
 
 
 def boundary_handlers(
     source_root: Path, boundaries: list[dict[str, Any]],
-) -> dict[tuple[str, str], list[set[int]]]:
-    """``{(module, function_name): [handler line-sets]}`` for each boundary.
+) -> dict[tuple[str, str], list[Anchors]]:
+    """``{(module, function_name): [anchors per handler]}`` for each boundary.
 
     Same-named defs in one module contribute all their handlers (the same
     (module, fn) ambiguity every Phase G/H join has). Unparseable/missing
     modules yield no entry (degrade, never invent).
     """
-    out: dict[tuple[str, str], list[set[int]]] = {}
-    trees: dict[str, Optional[ast.Module]] = {}
+    out: dict[tuple[str, str], list[Anchors]] = {}
+    parsed: dict[str, Optional[tuple[ast.Module, ModuleCode]]] = {}
     for b in boundaries:
         module = str(b.get("module", ""))
         fn_name = str(b.get("function_name", ""))
         key = (module, fn_name)
         if key in out:
             continue
-        if module not in trees:
+        if module not in parsed:
             path = _module_file(Path(source_root), module)
             try:
-                trees[module] = (ast.parse(path.read_text(encoding="utf-8"))
-                                 if path else None)
+                source = path.read_text(encoding="utf-8") if path else None
+                parsed[module] = ((ast.parse(source), ModuleCode(source))
+                                  if source is not None else None)
             except (SyntaxError, OSError, ValueError):
-                trees[module] = None
-        tree = trees[module]
-        if tree is None:
+                parsed[module] = None
+        entry = parsed[module]
+        if entry is None:
             continue
-        handlers: list[set[int]] = []
+        tree, code = entry
+        handlers: list[Anchors] = []
         for node in ast.walk(tree):
             if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                     and node.name == fn_name):
-                handlers.extend(_handler_line_sets(node))
+                handlers.extend(code.handler_anchors(node, h)
+                                for h in _handlers(node))
         out[key] = handlers
     return out
 
@@ -129,7 +137,10 @@ def failure_path_report(
     contexts = (read_test_contexts(Path(project_root), Path(source_root))
                 if executed is not None else None)
 
-    measured = executed is not None and contexts is not None
+    in_data = (measured_modules(Path(project_root), Path(source_root))
+               if contexts is not None else None)
+    measured = (executed is not None and contexts is not None
+                and in_data is not None)
     protected: list[dict[str, Any]] = []
     unprotected: list[dict[str, str]] = []
     for key, handlers in handlers_by_key.items():
@@ -141,30 +152,26 @@ def failure_path_report(
             "module": module, "function_name": fn_name,
             "handlers_total": len(handlers),
         }
-        if not measured or contexts is None:
+        if (not measured or contexts is None or in_data is None
+                or module not in in_data):
+            # no per-test data at all, or the target leaves this module out
+            # of measurement: unknown
             record.update({"handlers_covered": None, "covered": None,
                            "forcing_tests": []})
         else:
-            # a handler counts only when a named test ran one of its lines;
-            # lines that ran at import time carry no test
+            # a handler counts only when a named test ran a line that only
+            # its body can emit; lines that ran at import carry no test
             mod_ctx = contexts.get(module, {})
-            covered_handlers = [h for h in handlers
-                                if any(mod_ctx.get(line) for line in h)]
+            verdicts = [judge(h, mod_ctx) for h in handlers]
             forcing: set[str] = set()
-            for h in covered_handlers:
-                for line in h:
-                    forcing.update(mod_ctx.get(line, set()))
-            if any(handlers):
-                record.update({
-                    "handlers_covered": len(covered_handlers),
-                    # any handler exercised => the failure path was hit
-                    "covered": bool(covered_handlers),
-                    "forcing_tests": sorted(forcing)[:10],
-                })
-            else:
-                # no handler has a line of its own: unknown, not a zero
-                record.update({"handlers_covered": None, "covered": None,
-                               "forcing_tests": []})
+            for _, tests in verdicts:
+                forcing.update(tests)
+            record.update({
+                "handlers_covered": sum(1 for v, _ in verdicts if v is True),
+                "handlers_unmeasurable": sum(1 for v, _ in verdicts if v is None),
+                "covered": boundary_verdict([v for v, _ in verdicts]),
+                "forcing_tests": sorted(forcing)[:10],
+            })
         protected.append(record)
 
     # `is True`, not truthy: unmeasured records carry covered=None, which must
@@ -181,4 +188,4 @@ def failure_path_report(
     }
 
 
-__all__ = ["boundary_handlers", "failure_path_report"]
+__all__ = ["boundary_handlers", "boundary_verdict", "failure_path_report"]

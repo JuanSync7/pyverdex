@@ -15,9 +15,10 @@ Degrades honestly, never to fake zeros:
 - no ``.coverage``, or one without per-test contexts → "under a test" cannot
   be told from "at import", so factories are *mapped* with ``executed=None``
   and ``have_coverage`` is False;
-- a factory with no line of its own to measure (its body shares the ``def``
-  line, or is only code that runs later) → that one record has
-  ``executed=None``: unknown, neither executed nor a measured zero;
+- a factory that cannot be judged by line (see ``_lines``: no line only it
+  can emit, or its entry line is shared), or whose module the target leaves
+  out of measurement → that one record has ``executed=None``: unknown,
+  neither executed nor a measured zero;
 - no factories detected → the dimension is absent.
 """
 
@@ -26,9 +27,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ._contexts import read_test_contexts
+from ._contexts import measured_modules, read_test_contexts
 from ._detect import detect_app_factories
 from ._edges import _executed_lines_by_module
+from ._lines import Anchors, judge
 
 
 def boot_report(project_root: Path, source_root: Path) -> dict[str, Any]:
@@ -38,25 +40,24 @@ def boot_report(project_root: Path, source_root: Path) -> dict[str, Any]:
     contexts = (read_test_contexts(Path(project_root), Path(source_root))
                 if executed is not None else None)
 
-    measured = executed is not None and contexts is not None
+    in_data = (measured_modules(Path(project_root), Path(source_root))
+               if contexts is not None else None)
+    measured = (executed is not None and contexts is not None
+                and in_data is not None)
     records: list[dict[str, Any]] = []
     executed_n = 0
     for f in factories:
         record = dict(f)
-        # only lines that prove the factory itself ran: never the def line
-        # (it executes at import, which would mark every merely-imported
-        # factory as "executed"), never a nested callable's body (a test
-        # calling the returned app would light it up)
-        span = set(f.get("body_lines", []))
-        if not measured or contexts is None or not span:
+        if (not measured or contexts is None or in_data is None
+                or f["module"] not in in_data):
+            # no per-test data at all, or the target leaves this module out
+            # of measurement: unknown
             record.update({"executed": None, "tests": []})
         else:
-            mod_ctx = contexts.get(f["module"], {})
-            tests: set[str] = set()
-            for line in span:
-                tests.update(mod_ctx.get(line, set()))
-            ran = bool(tests)
-            record.update({"executed": ran, "tests": sorted(tests)[:10]})
+            anchors = Anchors(frozenset(f.get("body_lines", [])),
+                              f.get("entry_line"))
+            ran, tests = judge(anchors, contexts.get(f["module"], {}))
+            record.update({"executed": ran, "tests": tests[:10]})
             if ran:
                 executed_n += 1
         records.append(record)

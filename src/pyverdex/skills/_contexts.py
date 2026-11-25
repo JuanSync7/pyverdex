@@ -79,6 +79,38 @@ def read_test_contexts(
     return result or None
 
 
+def measured_modules(project_root: Path, source_root: Path) -> Optional[set[str]]:
+    """Modules the ``.coverage`` DB holds data for; ``None`` when the DB
+    is absent, unreadable or empty.
+
+    A module the target leaves out of measurement (``omit``) is not in the
+    set, so "no test ran it" cannot be claimed for it. One no test imported
+    still is: the run is given ``--source``, and coverage records such files
+    as measured with nothing executed."""
+    try:
+        import coverage as coverage_lib
+    except ImportError:  # pragma: no cover - coverage is a hard dep
+        return None
+    data_path = Path(project_root) / ".coverage"
+    if not data_path.exists():
+        return None
+    cov = coverage_lib.Coverage(data_file=str(data_path))
+    try:
+        cov.load()
+    except Exception:
+        return None
+    src = Path(source_root).resolve()
+    modules: set[str] = set()
+    for fpath in cov.get_data().measured_files():
+        try:
+            resolved = Path(fpath).resolve()
+            if resolved.is_relative_to(src):
+                modules.add(_module_name(resolved, src))
+        except OSError:
+            continue
+    return modules or None
+
+
 def function_spans(source_root: Path) -> dict[tuple[str, str], list[tuple[int, int]]]:
     """``{(module, function_name): [(line_start, line_end), ...]}`` for every
     function *and method* in the source tree.
@@ -152,5 +184,5 @@ def test_attribution(
             "tests_seen": len(all_tests)}
 
 
-__all__ = ["read_test_contexts", "function_spans",
+__all__ = ["read_test_contexts", "measured_modules", "function_spans",
            "boundary_test_attribution", "test_attribution"]

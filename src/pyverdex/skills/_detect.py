@@ -22,7 +22,6 @@ stays with the filename fallback. See ADR 0003.
 from __future__ import annotations
 
 import ast
-from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -182,39 +181,6 @@ def _constructs_app(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Optional[str]
     return None
 
 
-def own_statement_lines(stmts: list[ast.stmt]) -> set[int]:
-    """First lines of the statements that run when this block itself runs.
-
-    Used to ask "did a test run this body": a line counts only if running it
-    proves the block ran. So code that runs *later* is left out — the body of
-    a nested function or class, of a lambda, of a generator expression — and
-    so is any line such a body shares (``def one(): return a``, or a
-    statement holding a lambda), because a later call would light it up. The
-    ``def`` / ``class`` statement line itself stays: it runs with the block.
-    """
-    lines: set[int] = set()
-    later: set[int] = set()
-    pending: deque[ast.AST] = deque(stmts)
-    while pending:
-        node = pending.popleft()
-        end = int(getattr(node, "end_lineno", None)
-                  or getattr(node, "lineno", None) or 0)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            lines.add(node.lineno)
-            later.update(range(node.body[0].lineno, end + 1))
-            continue
-        if isinstance(node, ast.Lambda):
-            later.update(range(node.body.lineno, end + 1))
-            continue
-        if isinstance(node, ast.GeneratorExp):
-            later.update(range(node.lineno, end + 1))
-            continue
-        if isinstance(node, ast.stmt):
-            lines.add(node.lineno)
-        pending.extend(ast.iter_child_nodes(node))
-    return lines - later
-
-
 def detect_app_factories(source_root: Path) -> list[dict]:
     """Composition-root candidates: top-level functions with a conventional
     factory name OR that construct a framework app object in their body.
@@ -224,6 +190,7 @@ def detect_app_factories(source_root: Path) -> list[dict]:
     wiring that a test must deliberately call — are detected here (ADR 0008).
     """
     from ._edges import _module_name
+    from ._lines import ModuleCode
 
     factories: list[dict] = []
     root = Path(source_root)
@@ -231,27 +198,30 @@ def detect_app_factories(source_root: Path) -> list[dict]:
         if _VENDORED_DIRS.intersection(py.relative_to(root).parts):
             continue
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            source = py.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(py))
         except (SyntaxError, OSError, ValueError):
             continue
         module = _module_name(py, root)
+        code: Optional[ModuleCode] = None
         for node in tree.body:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             constructed = _constructs_app(node)
             if node.name in _FACTORY_NAMES or constructed:
                 end = getattr(node, "end_lineno", None) or node.lineno
+                if code is None:
+                    code = ModuleCode(source)
+                anchors = code.function_anchors(node)
                 factories.append({
                     "module": module, "function_name": node.name,
                     "line_start": node.lineno, "line_end": end,
-                    # executed-join anchor: the def line runs at IMPORT time,
-                    # so "was the factory called" must look at BODY lines only
-                    "body_start": node.body[0].lineno if node.body else node.lineno,
-                    # the lines that prove the factory itself ran (never the
-                    # def line, never code that runs later: nested defs,
-                    # lambdas, generator expressions)
-                    "body_lines": sorted(
-                        own_statement_lines(node.body) - {node.lineno}),
+                    # lines only the factory's own code can emit: one of them
+                    # running under a test proves the factory ran (_lines)
+                    "body_lines": sorted(anchors.lines),
+                    # the line a call always emits first, when it is one of
+                    # those; None -> "not executed" cannot be claimed
+                    "entry_line": anchors.entry,
                     "reason": (f"constructs:{constructed}" if constructed
                                else "factory-name"),
                 })
@@ -259,5 +229,4 @@ def detect_app_factories(source_root: Path) -> list[dict]:
 
 
 __all__ = ["detect_boundary", "detect_framework", "detect_app_factories",
-           "own_statement_lines",
            "CATEGORY_PATTERN"]
