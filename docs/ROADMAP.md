@@ -7,7 +7,7 @@ owner: Juan.Kok
 summary: The ordered slices, open owner questions and found gaps for turning pyverdex into playbooks plus a deterministic measure-judge-loop layer (ADR 0009).
 id: roadmap
 created: 2026-11-24
-updated: 2026-11-24
+updated: 2026-11-26
 visibility: public
 canonical: true
 ---
@@ -94,7 +94,12 @@ changed code judged on its own.
 **Queued, not planned yet:** the smallest test set (a report of tests that kill
 no mutant and prove no plan row the others do not; never an automatic
 deletion); tests held back from the code's author; CI running `make verify`;
-Keel structure phases 2 to 4 (see Q9). **Frozen:** new judgment-loop features until S1
+Keel structure phases 2 to 4 (see Q9); the name-based join key (bare function
+name, and `__init__` collapsed to its package), which the merged boundary and
+per-test joins on main also use, so one function's lines can be credited to
+another; recording which functions a test entered, keyed by file and
+position, in place of inferring it from recorded lines (it would replace the
+line rule PR #15 is parked on). **Frozen:** new judgment-loop features until S1
 to S4 land (ADR P4).
 
 ## Done
@@ -105,15 +110,15 @@ to S4 land (ADR P4).
   run** (no `node_modules`, and the target passes by skipping). So
   `make verify` is red on main. PR #15's branch gives the same four results
   (pytest exit 0; its test count was not captured), so it adds no failure.
-- **PR #15 reviewed, not merged.** An independent review failed it with six
-  findings of a false pass. Four were reproduced on throwaway projects: a
-  one-line factory that is only imported reads as executed; a factory called
-  at import reads as executed by a test; an `except` body on the clause line
-  reads as exercised when only the type test ran; a nested helper's handler
-  is credited to the enclosing boundary. Two were confirmed by reading: a
-  report with only unprotected boundaries says "no coverage data" and drops
-  their names; an empty later scan leaves the earlier passing report in the
-  state.
+- **PR #15 parked as a draft, not merged.** Four independent review rounds
+  each failed it for a false pass or a false zero in its two measurements.
+  The fixes on its branch closed the first three rounds: the lines that count
+  are read from the compiler's line tables, each handler or factory reads
+  ran, did not run or unknown, and a test checks the rule against a real
+  tracer. Three findings from the fourth round are open: a generator body a
+  test resumes reads as a measured zero; a function and a method with one
+  name share a key; `m.py` and `m/__init__.py` share a module name. The
+  review stopped at the agreed cap of four rounds.
 
 - ADR 0009 drafted (status: proposed); rulings R1 to R24 recorded.
 - Read-only audits of both sides: the older test skills against the current
